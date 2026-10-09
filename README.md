@@ -1,10 +1,10 @@
-# LONG AI Dashboard v1.3 · Descobridor dinàmic
+# LONG AI Dashboard v1.4 – Radar personal
 
-Puja **el contingut d’aquesta carpeta** a l’arrel de `main` a GitHub. Vercel ha de detectar `/api/discover`, `/api/scan` i `/api/quotes`.
+- Desa el radar triat en localStorage del navegador (`longai-watch-v14`).
+- Afegeix accions i criptomonedes manualment o des del Top 10 dinàmic.
+- Elimina actius sense que reapareguin automàticament en refrescar.
+- Les cotitzacions automàtiques continuen depenent del catàleg `/api/quotes`, i els actius nous seleccionats al Top 10 mantenen l’última dada disponible a la sessió actual.
+- Les dades del radar local no se sincronitzen entre ordinadors ni amb ChatGPT.
+- Cap WATCH/SETUP és ordre ni entrada confirmada; el motor 1D/4H/30m continua orientatiu.
 
-## Funcions
-- Descobrir nous candidats: selecciona per lots rotatius de 25 actius entre un univers de +100 accions i consulta les altcoins de més volum de CoinGecko. Mostra Top 10 + 10 per preu i variació, NO senyals verificats.
-- Analitzar Top 10 + 10: analitza fins a 5 accions i 5 altcoins de les disponibles, amb confirmacions WEB WATCH / PRE-SETUP / PRE-READY. Els candidats cripto fora dels símbols coberts per /api/scan no s'avaluen com a entrada.
-- L'estat READY és deliberadament desactivat: falta validador Pine de TradingView i prova retrospectiva.
-- Fonts públiques poden fallar o limitar consultes. Sense base de dades ni servei continu, la cerca per rotació no és un escàner complet en temps real i no guarda historial de canvis.
-- El dashboard no està connectat a la tasca programada de ChatGPT i no envia notificacions automàtiques.
+Instal·lació: pujar el contingut **interior** de `long-ai-dashboard-v1.4` a l'arrel de `main` a GitHub, substituint els fitxers anteriors. No cal afegir carpetes imbricades.
