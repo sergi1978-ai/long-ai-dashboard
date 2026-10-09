@@ -1,10 +1,5 @@
-# LONG AI Dashboard v1.4 – Radar personal
+# LONG AI Dashboard v1.4.1 – Correcció eliminar del radar
 
-- Desa el radar triat en localStorage del navegador (`longai-watch-v14`).
-- Afegeix accions i criptomonedes manualment o des del Top 10 dinàmic.
-- Elimina actius sense que reapareguin automàticament en refrescar.
-- Les cotitzacions automàtiques continuen depenent del catàleg `/api/quotes`, i els actius nous seleccionats al Top 10 mantenen l’última dada disponible a la sessió actual.
-- Les dades del radar local no se sincronitzen entre ordinadors ni amb ChatGPT.
-- Cap WATCH/SETUP és ordre ni entrada confirmada; el motor 1D/4H/30m continua orientatiu.
+Solucionat el botó **✕ Eliminar** que no es mostrava en les files del radar personal. Ara cada fila inclou acció d'eliminació i es desa a `localStorage` (`longai-watch-v14`), de manera que no reapareix en refrescar. Les files del descobridor Top 10 són independents: per eliminar un actiu seguït, fes-ho a **El meu radar**. La descoberta pot tornar a mostrar l'actiu com a *candidat*, però no el torna a afegir al radar personal.
 
-Instal·lació: pujar el contingut **interior** de `long-ai-dashboard-v1.4` a l'arrel de `main` a GitHub, substituint els fitxers anteriors. No cal afegir carpetes imbricades.
+Actualitza fitxers de l'arrel de GitHub `main`; Vercel farà el deploy.
