@@ -1,0 +1,1 @@
+export default function handler(req,res){res.setHeader('Cache-Control','no-store');res.status(200).json({ok:true,version:'1.1',quoteSources:['Yahoo Finance public chart','CoinGecko public markets'],at:new Date().toISOString()})}
