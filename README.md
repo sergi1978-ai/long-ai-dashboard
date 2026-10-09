@@ -10,3 +10,10 @@
 - WATCH/PRE-SETUP/PRE-READY són classificacions orientatives. No emet READY oficial Pine ni executa operacions ni envia notificacions externes.
 
 **Instal·lació:** puja els fitxers INTERIORS d'aquesta carpeta a l'arrel de la branca `main` del repositori GitHub connectat a Vercel. No canviïs Root Directory.
+
+## v1.5.1
+- Consultes Yahoo controlades en lots de 5, amb fallades individuals visibles.
+- Alternativa Binance si CoinGecko no està disponible (pot dependre de la regió).
+- Respostes parcials i missatges d’error visibles en la descoberta.
+- Lot rotatiu de 15 accions per reduir el risc de bloqueig.
+- No s’han validat les fonts externes des d’una implementació real de Vercel.

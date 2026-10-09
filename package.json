@@ -1,1 +1,9 @@
-{"name":"long-ai-dashboard","version":"1.5.0","private":true,"type":"module","scripts":{"dev":"vercel dev"}}
+{
+  "name": "long-ai-dashboard",
+  "version": "1.5.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev"
+  }
+}
