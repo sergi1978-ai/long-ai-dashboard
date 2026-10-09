@@ -1,11 +1,10 @@
-# LONG AI Dashboard v1.2.3 — FIX INVALID TIME VALUE
+# LONG AI Dashboard v1.3 · Descobridor dinàmic
 
-Arregla validació temporal al backend. `api/scan.js` elimina espelmes amb timestamps no vàlids, no aplica `Intl.DateTimeFormat` ni `toISOString` sobre dates invàlides, i torna errors específics quan la font no envia dades útils. No altera els criteris READY del motor.
+Puja **el contingut d’aquesta carpeta** a l’arrel de `main` a GitHub. Vercel ha de detectar `/api/discover`, `/api/scan` i `/api/quotes`.
 
-## Publicació
-Puja els fitxers continguts en aquesta carpeta a l’arrel de `main` del repositori GitHub, reemplaçant els existents, sense crear cap subcarpeta addicional. Vercel hauria de construir automàticament.
-
-## Prova
-`/api/scan?symbols=UBER` ha de retornar JSON amb `analyses` o errors explícits de la font. Si persisteix un error, copia el JSON complet perquè es pugui reproduir.
-
-La resposta és orientativa; el script Pine de TradingView no s'executa aquí.
+## Funcions
+- Descobrir nous candidats: selecciona per lots rotatius de 25 actius entre un univers de +100 accions i consulta les altcoins de més volum de CoinGecko. Mostra Top 10 + 10 per preu i variació, NO senyals verificats.
+- Analitzar Top 10 + 10: analitza fins a 5 accions i 5 altcoins de les disponibles, amb confirmacions WEB WATCH / PRE-SETUP / PRE-READY. Els candidats cripto fora dels símbols coberts per /api/scan no s'avaluen com a entrada.
+- L'estat READY és deliberadament desactivat: falta validador Pine de TradingView i prova retrospectiva.
+- Fonts públiques poden fallar o limitar consultes. Sense base de dades ni servei continu, la cerca per rotació no és un escàner complet en temps real i no guarda historial de canvis.
+- El dashboard no està connectat a la tasca programada de ChatGPT i no envia notificacions automàtiques.
