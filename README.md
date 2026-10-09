@@ -1,9 +1,1 @@
-# LONG AI Dashboard v1.2.1 — Correcció de dades
-
-- RSI i ATR calculats amb suavització de Wilder; indicador web orientatiu.
-- RVOL sobre volums 30m de la mateixa franja horària (accions) o últimes 40 espelmes (cripto); mínim de mostres, sense convertir dades absents a zero.
-- S'exclouen espelmes encara obertes; es marca WATCH si la dada és antiga o falta històric.
-- R/R es mostra N/D sense patró ni resistència identificada; no s'inventa un objectiu estructural.
-- Identificació de ruptura pendent; PRE-READY exigeix suport de volum, tendència i RR>=2, però no és compra confirmada.
-
-Puja els fitxers interiors del ZIP a l'arrel del repositori GitHub `long-ai-dashboard`, substituint els anteriors. Vercel hauria de desplegar des de main.
+LONG AI 1.2.2 — correcció d’errors de cobertura. Corregeix bug de filtratge 1D: les barres diàries no poden exigir horari regular; fallback Yahoo query1/query2 i Yahoo crypto si Binance bloquejat; mostra errors en taula; RVOL i R/R no disponibles -> N/D. Les fonts poden limitar les peticions. No és Pine TradingView ni READY verificat.
