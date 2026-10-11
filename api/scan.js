@@ -19,15 +19,33 @@ function metrics(b){const c=b.map(x=>x.c),z=b.at(-1);return {price:z?.c??null,em
 function isStockSession(t){if(!validTime(t))return false;const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hourCycle:'h23',weekday:'short'}).formatToParts(new Date(t));const d=Object.fromEntries(parts.map(x=>[x.type,x.value]));let m=Number(d.hour)*60+Number(d.minute);return d.weekday!=='Sat'&&d.weekday!=='Sun'&&m>=570&&m<960}
 function closed(b,ms,isStock=false){const now=Date.now();return b.filter(x=>x.t+ms<=now-60000&&(!isStock||isStockSession(x.t)))}
 function rvolMatched(f,isStock){const last=f.at(-1);if(!last||!Number.isFinite(last.v)||last.v<=0)return null;let hist=f.slice(0,-1).filter(x=>Number.isFinite(x.v)&&x.v>0);if(isStock){const tz=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});let slot=x=>validTime(x.t)?tz.format(new Date(x.t)):null;const currentSlot=slot(last);if(!currentSlot)return null;hist=hist.filter(x=>slot(x)===currentSlot);}else hist=hist.slice(-40);if(hist.length<(isStock?5:12))return null;const avg=hist.reduce((s,x)=>s+x.v,0)/hist.length;return avg>0?last.v/avg:null}
+function compression4h(h){
+ const closes=h.map(x=>x.c);if(closes.length<45)return null;
+ const widths=[];for(let i=19;i<closes.length;i++){
+  const arr=closes.slice(i-19,i+1),avg=arr.reduce((a,b)=>a+b,0)/arr.length;
+  if(!(avg>0))continue;
+  const sd=Math.sqrt(arr.reduce((v,x)=>v+(x-avg)**2,0)/arr.length);
+  widths.push(4*sd/avg);
+ }
+ const recent=widths.at(-1),hist=widths.slice(-41,-1);
+ if(!hist.length)return null;
+ const mean=hist.reduce((a,b)=>a+b,0)/hist.length;
+ return mean>0?recent/mean:null;
+}
 function analyze(symbol,type,d,h,f){const stock=type==='acció';const C=f.at(-1),D=d.length?metrics(d):{},H=h.length?metrics(h):{},F=f.length?metrics(f):{};const coverage={daily:d.length,hour:h.length,thirty:f.length};const base={symbol,type,verifiedSignal:false,coverage,source:stock?'Yahoo Finance Chart':'Binance public klines',price:C?.c??null,quoteTime:C?safeISO(C.t):null,volumeRatio:null,rr:null,trigger:null,stop:null,tp1:null,tp2:null,pattern:'SENSE PATRÓ',status:'WATCH',rsi:F.rsi??null,ema20:F.ema20??null,ema50:F.ema50??null,macd:F.macd??null,atr:F.atr??null};
  if(d.length<55||h.length<40||f.length<65)return {...base,reason:'Històric insuficient (1D '+d.length+', 4H '+h.length+', 30m '+f.length+')',dataQuality:'insufficient'};
  const age=Date.now()-C.t;const stale=stock?age>4*86400000:age>3*3600000;if(stale)return {...base,reason:'Dades massa antigues per validar un patró',dataQuality:'stale'};
  const prior=f.slice(-13,-1),high=Math.max(...prior.map(x=>x.h)),low=Math.min(...prior.map(x=>x.l));const rvol=rvolMatched(f,stock);const trendD=D.ema50!==null&&D.price>D.ema20&&D.ema20>D.ema50;const trend4H=H.ema50!==null&&H.price>H.ema20&&H.ema20>H.ema50;const higher=trendD&&trend4H;
  const momentum=F.rsi!==null&&F.rsi>=48&&F.rsi<=72;const breakout=C.c>high&&C.c>C.o;const retest=F.ema20!==null&&C.l<=F.ema20*1.008&&C.c>F.ema20&&C.c>C.o;const nearBreakout=!breakout&&high>0&&C.c>=high*0.99;const pattern=breakout?'RUPTURA':retest?'RETEST EMA20':nearBreakout?'RUPTURA PENDENT':'SENSE PATRÓ';const volOk=rvol!==null&&rvol>=1.35;
+ // Indicador d'exploracio WEB: independent de READY i NO equivalent al Pine.
+ const bbRatio=compression4h(h);
+ const explosiveChecks={trend1D:trendD,trend4H:trend4H,proximity:breakout||nearBreakout,volume:volOk,compression:bbRatio!==null&&bbRatio<0.8};
+ const explosiveWatch=Object.values(explosiveChecks).filter(Boolean).length;
+ const explosiveDirection=trendD&&trend4H?'ALCISTA':!trendD&&!trend4H?'BAIXISTA':'NEUTRA';
  let trigger=null,stop=null,tp1=null,tp2=null,rr=null;
  if(breakout||retest||nearBreakout){trigger=breakout?C.c:retest?C.h:high;stop=Math.min(low,C.l)-0.18*(F.atr??0);const risk=trigger-stop;if(!(risk>0&&F.atr>0)){trigger=null;stop=null}else{const highs=h.slice(-85,-1).filter(x=>x.h>trigger+0.1*F.atr).map(x=>x.h).sort((a,b)=>a-b);tp1=highs.length?highs[0]:null;rr=tp1!==null?(tp1-trigger)/risk:null;tp2=tp1!==null?trigger+2.5*risk:null}}
  let status='WATCH',reason='Sense confirmació de tendència i patró';if(higher&&(breakout||retest||nearBreakout)){status='PRE-SETUP';reason='Configuració preliminar; cal validar volum i benefici/risc';if((breakout||retest)&&volOk&&momentum&&rr!==null&&rr>=2){status='PRE-READY';reason='Filtres favorables; falta validar Pine, estructura i liquiditat'}}
- return {...base,status,reason,pattern,volumeRatio:rvol,trigger,stop,tp1,tp2,rr,trendD,trend4H,filters:{higher,momentum,breakout,retest,volume:volOk,rr:rr!==null&&rr>=2},dataQuality:rvol===null?'volume_unavailable':'ok',warning:'Motor web orientatiu; READY formal desactivat. RVOL es mostra N/D si no es pot comparar.'}
+ return {...base,status,reason,pattern,volumeRatio:rvol,trigger,stop,tp1,tp2,rr,trendD,trend4H,explosiveWatch,explosiveDirection,compressionRatio:bbRatio,explosiveChecks,filters:{higher,momentum,breakout,retest,volume:volOk,rr:rr!==null&&rr>=2},dataQuality:rvol===null?'volume_unavailable':'ok',warning:'Motor web orientatiu; READY formal desactivat. RVOL es mostra N/D si no es pot comparar.'}
 }
 async function one(symbol){
  const isStock=STOCKS.has(symbol),isCrypto=CRYPTOS.has(symbol);
@@ -49,4 +67,4 @@ async function one(symbol){
  result.source=source;
  return result;
 }
-export default async function handler(req,res){res.setHeader('Cache-Control','public,s-maxage=120,stale-while-revalidate=240');if(req.method!=='GET')return res.status(405).json({error:'method_not_allowed'});const requested=String(req.query?.symbols||'UBER,GTLB,OXY,SNOW,AVAX').split(',').map(x=>x.trim().toUpperCase()).filter(Boolean);const names=[...new Set(requested)].slice(0,5);let results=await Promise.allSettled(names.map(one));const analyses=[],errors=[];results.forEach((r,i)=>r.status==='fulfilled'?analyses.push(r.value):errors.push({symbol:names[i],message:String(r.reason?.message||r.reason)}));return res.status(200).json({analyses,errors,updatedAt:new Date().toISOString(),version:'1.3',mode:'indicative_technical_screen',important:'Els estats són estimacions del motor web; no són la sortida directa del Pine LONG AI v6.4.1. READY desactivat sense validació completa.'})}
+export default async function handler(req,res){res.setHeader('Cache-Control','public,s-maxage=120,stale-while-revalidate=240');if(req.method!=='GET')return res.status(405).json({error:'method_not_allowed'});const requested=String(req.query?.symbols||'UBER,GTLB,OXY,SNOW,AVAX').split(',').map(x=>x.trim().toUpperCase()).filter(Boolean);const names=[...new Set(requested)].slice(0,5);let results=await Promise.allSettled(names.map(one));const analyses=[],errors=[];results.forEach((r,i)=>r.status==='fulfilled'?analyses.push(r.value):errors.push({symbol:names[i],message:String(r.reason?.message||r.reason)}));return res.status(200).json({analyses,errors,updatedAt:new Date().toISOString(),version:'1.3',mode:'indicative_technical_screen',important:'Estats i Explosive Watch orientatius del motor web, NO equivalen a Pine LONG AI; READY formal desactivat sense validacio completa.'})}
