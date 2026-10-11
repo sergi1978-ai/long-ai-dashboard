@@ -2,7 +2,7 @@
 // Càlculs server-side, sense claus ni ordres. Font Yahoo Finance Chart per accions;
 // Binance public klines per cripto quan la regió ho permet.
 const STOCKS=new Set(["UBER", "GTLB", "OXY", "SNOW", "CRM", "ABBV", "PEP", "CVX", "RTX", "HAE", "NVDA", "MU", "ANET", "COHR", "PLTR", "FROG", "RKLB", "APLD", "PANW", "CRWD", "MSFT", "GOOGL", "AMZN", "META", "AAPL", "AMD", "AVGO", "TSM", "ASML", "AMAT", "LRCX", "KLAC", "MRVL", "SMCI", "ORCL", "NET", "DDOG", "SHOP", "NOW", "INTU", "RBRK", "ZS", "FTNT", "OKTA", "PATH", "MDB", "HUBS", "TWLO", "HOOD", "COIN", "MSTR", "SQ", "PYPL", "SOFI", "AFRM", "IBKR", "GS", "JPM", "BAC", "C", "XOM", "SLB", "HAL", "KOS", "COP", "EOG", "MPC", "VLO", "GEV", "ETN", "PWR", "VST", "CEG", "BE", "OKLO", "CCJ", "NEE", "DUK", "GE", "CAT", "DE", "URI", "BA", "LMT", "NOC", "KTOS", "HIMS", "TEM", "UNH", "LLY", "MRK", "PFE", "GILD", "REGN", "TMO", "ISRG", "DXCM", "ROST", "COST", "WMT", "TGT", "HD", "LOW", "CMG", "MCD", "SBUX", "NFLX", "DIS", "SPOT", "ROKU", "TTD", "ABNB", "BKNG", "RCL", "CCL", "DAL", "UAL", "TSLA", "RIVN", "LCID", "NIO", "F", "GM"]);
-const CRYPTOS=new Set(['BTC','ETH','SOL','AVAX','AAVE','LINK','UNI','DOGE','LTC','BCH','SUI','ONDO','RENDER','NEAR','TIA','XRP','ENA','INJ','ARB','JUP']);
+const CRYPTOS=new Set(['BTC','ETH','SOL','AVAX','AAVE','LINK','UNI','DOGE','LTC','BCH','SUI','ONDO','RENDER','NEAR','TIA','XRP','ENA','INJ','ARB','JUP','MET','HYPE']);
 const timeout=async(url)=>{const ctl=new AbortController();const id=setTimeout(()=>ctl.abort(),7000);try{const r=await fetch(url,{signal:ctl.signal,headers:{'Accept':'application/json','User-Agent':'Mozilla/5.0 LONG-AI-Radar'}});if(!r.ok)throw Error('HTTP '+r.status);return r.json()}finally{clearTimeout(id)}};
 function validTime(t){return typeof t==='number'&&Number.isFinite(t)&&Number.isFinite(new Date(t).getTime())&&t>946684800000&&t<Date.now()+86400000}
 function safeISO(t){return validTime(t)?new Date(t).toISOString():null}
@@ -10,7 +10,15 @@ function clean(bars){return bars.filter(x=>validTime(x.t)&&[x.o,x.h,x.l,x.c].eve
 async function yahooFetch(url){let errors=[];for(const host of ['query1.finance.yahoo.com','query2.finance.yahoo.com']){try{return await timeout(url.replace('query1.finance.yahoo.com',host))}catch(e){errors.push(host+': '+e.message)}}throw Error('Yahoo Finance '+errors.join(' | '))}
 async function yahoo(symbol,interval,range){const u=`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&range=${range}&includePrePost=false`;const j=await yahooFetch(u),x=j?.chart?.result?.[0],q=x?.indicators?.quote?.[0];if(!q||!Array.isArray(x.timestamp))throw Error('no_chart_or_timestamps');let b=x.timestamp.map((t,i)=>({t:Number(t)*1000,o:q.open?.[i],h:q.high?.[i],l:q.low?.[i],c:q.close?.[i],v:q.volume?.[i]}));const filtered=clean(b);if(!filtered.length)throw Error('no_valid_candles_'+interval+'_'+range);return filtered}
 async function binance(symbol,interval,limit){const s=symbol+'USDT',u=`https://api.binance.com/api/v3/klines?symbol=${s}&interval=${interval}&limit=${limit}`;const a=await timeout(u);if(!Array.isArray(a))throw Error('no klines');return clean(a.map(x=>({t:x[0],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[5]})))}
-function aggregate(a,n){let out=[];for(let i=0;i+n<=a.length;i+=n){const x=a.slice(i,i+n);out.push({t:x[0].t,o:x[0].o,h:Math.max(...x.map(y=>y.h)),l:Math.min(...x.map(y=>y.l)),c:x.at(-1).c,v:x.every(y=>Number.isFinite(y.v))?x.reduce((s,y)=>s+y.v,0):null})}return out}
+function aggregate(a,n){
+ // Agrupa per finestres UTC fixes: evita desplacaments segons el nombre de barres retornades.
+ const groups=new Map(),ms=n*3600000;
+ for(const x of a){const key=Math.floor(x.t/ms)*ms;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(x)}
+ return [...groups].sort((a,b)=>a[0]-b[0]).filter(([,bars])=>bars.length===n).map(([t,bars])=>({
+  t,o:bars[0].o,h:Math.max(...bars.map(y=>y.h)),l:Math.min(...bars.map(y=>y.l)),c:bars.at(-1).c,
+  v:bars.every(y=>Number.isFinite(y.v))?bars.reduce((sum,y)=>sum+y.v,0):null
+ }));
+}
 function ema(a,p){if(a.length<p)return null;let v=a.slice(0,p).reduce((s,x)=>s+x,0)/p,k=2/(p+1);for(let i=p;i<a.length;i++)v=a[i]*k+v*(1-k);return v}
 function rsi(a,p=14){if(a.length<p+1)return null;let gain=0,loss=0;for(let i=1;i<=p;i++){let d=a[i]-a[i-1];gain+=Math.max(d,0);loss+=Math.max(-d,0)}gain/=p;loss/=p;for(let i=p+1;i<a.length;i++){let d=a[i]-a[i-1];gain=(gain*(p-1)+Math.max(d,0))/p;loss=(loss*(p-1)+Math.max(-d,0))/p}return loss===0?(gain===0?50:100):100-100/(1+gain/loss)}
 function atr(b,p=14){if(b.length<p+1)return null;let tr=b.slice(1).map((x,i)=>Math.max(x.h-x.l,Math.abs(x.h-b[i].c),Math.abs(x.l-b[i].c)));let v=tr.slice(0,p).reduce((a,b)=>a+b,0)/p;for(let i=p;i<tr.length;i++)v=(v*(p-1)+tr[i])/p;return v}
@@ -32,8 +40,8 @@ function compression4h(h){
  const mean=hist.reduce((a,b)=>a+b,0)/hist.length;
  return mean>0?recent/mean:null;
 }
-function analyze(symbol,type,d,h,f){const stock=type==='acció';const C=f.at(-1),D=d.length?metrics(d):{},H=h.length?metrics(h):{},F=f.length?metrics(f):{};const coverage={daily:d.length,hour:h.length,thirty:f.length};const base={symbol,type,verifiedSignal:false,coverage,source:stock?'Yahoo Finance Chart':'Binance public klines',price:C?.c??null,quoteTime:C?safeISO(C.t):null,volumeRatio:null,rr:null,trigger:null,stop:null,tp1:null,tp2:null,pattern:'SENSE PATRÓ',status:'WATCH',rsi:F.rsi??null,ema20:F.ema20??null,ema50:F.ema50??null,macd:F.macd??null,atr:F.atr??null};
- if(d.length<55||h.length<40||f.length<65)return {...base,reason:'Històric insuficient (1D '+d.length+', 4H '+h.length+', 30m '+f.length+')',dataQuality:'insufficient'};
+function analyze(symbol,type,d,h,f){const stock=type==='acció';const C=f.at(-1),D=d.length?metrics(d):{},H=h.length?metrics(h):{},F=f.length?metrics(f):{};const coverage={daily:d.length,hour:h.length,thirty:f.length};const base={symbol,type,verifiedSignal:false,coverage,source:stock?'Yahoo Finance Chart':'Binance public klines',price:C?.c??null,quoteTime:C?safeISO(C.t):null,volumeRatio:null,rr:null,trigger:null,stop:null,tp1:null,tp2:null,pattern:'SENSE PATRÓ',status:'SENSE DADES',rsi:F.rsi??null,ema20:F.ema20??null,ema50:F.ema50??null,macd:F.macd??null,atr:F.atr??null};
+ if(d.length<65||h.length<60||f.length<65)return {...base,reason:'Històric insuficient (1D '+d.length+', 4H '+h.length+', 30m '+f.length+')',dataQuality:'insufficient'};
  const age=Date.now()-C.t;const stale=stock?age>4*86400000:age>3*3600000;if(stale)return {...base,reason:'Dades massa antigues per validar un patró',dataQuality:'stale'};
  const prior=f.slice(-13,-1),high=Math.max(...prior.map(x=>x.h)),low=Math.min(...prior.map(x=>x.l));const rvol=rvolMatched(f,stock);const trendD=D.ema50!==null&&D.price>D.ema20&&D.ema20>D.ema50;const trend4H=H.ema50!==null&&H.price>H.ema20&&H.ema20>H.ema50;const higher=trendD&&trend4H;
  const momentum=F.rsi!==null&&F.rsi>=48&&F.rsi<=72;const breakout=C.c>high&&C.c>C.o;const retest=F.ema20!==null&&C.l<=F.ema20*1.008&&C.c>F.ema20&&C.c>C.o;const nearBreakout=!breakout&&high>0&&C.c>=high*0.99;const pattern=breakout?'RUPTURA':retest?'RETEST EMA20':nearBreakout?'RUPTURA PENDENT':'SENSE PATRÓ';const volOk=rvol!==null&&rvol>=1.35;
@@ -53,8 +61,8 @@ function analyze(symbol,type,d,h,f){const stock=type==='acció';const C=f.at(-1)
  const earlyNear=earlyDistanceATR!==null&&earlyDistanceATR>=0&&earlyDistanceATR<=.65;
  const earlyFirstImpulse=earlyTrigger>0&&atr4>0&&C.c>earlyTrigger&&C.c>C.o&&C.c<=earlyTrigger+.60*atr4&&rvol!==null&&rvol>=1.05;
  const earlyVolume=rvol!==null&&rvol>=1.05;
- const dailyTurn=d.slice(-20).reduce((sum,x)=>sum+(Number.isFinite(x.v)?x.c*x.v:0),0)/Math.min(d.length,20);
- const liquidOK=dailyTurn>=1000000;
+ const dailyBars=d.slice(-20);const dailyTurn=dailyBars.length===20&&dailyBars.every(x=>Number.isFinite(x.v))?dailyBars.reduce((sum,x)=>sum+x.c*x.v,0)/20:null;
+ const liquidOK=dailyTurn!==null&&dailyTurn>=1000000;
  const extensionOK=atr4>0&&H.ema20>0&&C.c<=H.ema20+2*atr4;
  const explosiveChecks={compression:earlyCompression,rupture:earlyNear||earlyFirstImpulse,volume:earlyVolume,trend:earlyTrend,liquidityAndExtension:liquidOK&&extensionOK};
  const explosiveWatch=Object.values(explosiveChecks).filter(Boolean).length;
@@ -81,7 +89,7 @@ async function one(symbol){
   }
   d=closed(d,86400000);h=closed(h,3600000);f=closed(f,1800000)
  }
- const four=aggregate(h,4); // Aproximacio: encara NO alineat amb 4H d'exchange de TradingView.if(!d.length||!f.length)throw Error('no_valid_candles_after_filter');const result=analyze(symbol,isStock?'acció':'cripto',d,four,f);
+ const four=aggregate(h,4); // UTC 4H; validar la sessio de l'exchange contra TradingView.if(!d.length||!f.length)throw Error('no_valid_candles_after_filter');const result=analyze(symbol,isStock?'acció':'cripto',d,four,f);
  result.source=source;
  return result;
 }
