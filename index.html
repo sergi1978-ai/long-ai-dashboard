@@ -113,18 +113,22 @@ async function discoveryTechnicalFetch(items){
  }
  return {out,errors};
 }
+function discoveryEligible(x){
+ const a=discoveryTechnical[x.symbol];
+ return Boolean(a&&a.dataQuality==='ok'&&!a.noChase&&['PRE-SETUP','PRE-READY','READY','READY A','READY A+'].includes(a.status));
+}
 function paintDiscovery(){
- const items=[...(currentMarket==='acció'?lastDiscovery.stocks:lastDiscovery.crypto)].sort((a,b)=>{
+ const items=[...(currentMarket==='acció'?lastDiscovery.stocks:lastDiscovery.crypto)].filter(discoveryEligible).sort((a,b)=>{
   const x=discoveryScore(a),y=discoveryScore(b);
   const bx=discoveryTechnical[a.symbol]?.noChase||discoveryTechnical[a.symbol]?.status==='NO PERSEGUIR';
   const by=discoveryTechnical[b.symbol]?.noChase||discoveryTechnical[b.symbol]?.status==='NO PERSEGUIR';
   if(bx!==by)return bx?1:-1;
   return x==null&&y==null?0:x==null?1:y==null?-1:y-x;
  });
- $('stock-result-count').textContent=lastDiscovery.stocks.length;
- $('crypto-result-count').textContent=lastDiscovery.crypto.length;
+ $('stock-result-count').textContent=lastDiscovery.stocks.filter(discoveryEligible).length;
+ $('crypto-result-count').textContent=lastDiscovery.crypto.filter(discoveryEligible).length;
  document.querySelectorAll('.market-filter').forEach(b=>{const active=b.dataset.market===currentMarket;b.classList.toggle('is-active',active);b.setAttribute('aria-pressed',String(active))});
- $('discoverrows').innerHTML=items.length?items.map((x,i)=>'<tr data-discover="'+esc(x.symbol)+'"><td class="dim">'+(i+1)+'</td><td><b>'+esc(x.symbol)+'</b>'+(x.name?'<div class="small dim">'+esc(x.name)+'</div>':'')+'</td><td>'+number(x.price)+' $</td><td class="'+(x.changePct>=0?'plus':'minus')+'">'+(x.changePct==null?'—':(x.changePct>=0?'+':'')+Number(x.changePct).toFixed(2)+'%')+'</td><td>'+number(x.dollarVolume)+' $</td><td><span class="score score-'+scoreClass(discoveryScore(x))+'">'+(discoveryScore(x)==null?'N/D':discoveryScore(x)+'/100')+'</span></td><td><span class="chip">'+esc(discoveryTechnical[x.symbol]?.status||'NO ANALITZAT')+'</span></td><td><button type="button" class="watch-add" data-watch-add="'+esc(x.symbol)+'" '+(isWatched(x.symbol)?'disabled':'')+'>'+(isWatched(x.symbol)?'✓ Desat':'+ Seguir')+'</button></td></tr>').join(''):'<tr><td colspan="7" class="dim">Cap candidat amb dades recents per a aquest mercat. Torna-ho a provar.</td></tr>';
+ $('discoverrows').innerHTML=items.length?items.map((x,i)=>'<tr data-discover="'+esc(x.symbol)+'"><td class="dim">'+(i+1)+'</td><td><b>'+esc(x.symbol)+'</b>'+(x.name?'<div class="small dim">'+esc(x.name)+'</div>':'')+'</td><td>'+number(x.price)+' $</td><td class="'+(x.changePct>=0?'plus':'minus')+'">'+(x.changePct==null?'—':(x.changePct>=0?'+':'')+Number(x.changePct).toFixed(2)+'%')+'</td><td>'+number(x.dollarVolume)+' $</td><td><span class="score score-'+scoreClass(discoveryScore(x))+'">'+(discoveryScore(x)==null?'N/D':discoveryScore(x)+'/100')+'</span></td><td><span class="chip">'+esc(discoveryTechnical[x.symbol]?.status||'NO ANALITZAT')+'</span></td><td><button type="button" class="watch-add" data-watch-add="'+esc(x.symbol)+'" '+(isWatched(x.symbol)?'disabled':'')+'>'+(isWatched(x.symbol)?'✓ Desat':'+ Seguir')+'</button></td></tr>').join(''):'<tr><td colspan="7" class="dim">Cap candidat PRE-SETUP o superior amb dades tècniques vàlides en aquesta cerca. Prova una altra rotació.</td></tr>';
 }
 document.querySelectorAll('.market-filter').forEach(b=>b.addEventListener('click',()=>{currentMarket=b.dataset.market;paintDiscovery()}));
 async function discover(){
@@ -139,8 +143,8 @@ async function discover(){
   status.textContent='Preselecció rebuda; calculant tendència, volum i configuracions…';
   const tech=await discoveryTechnicalFetch([...eq,...cr]);
   discoveryTechnical=tech.out;paintDiscovery();
-  status.textContent=eq.length+' accions · '+cr.length+' criptomonedes · '+Object.keys(discoveryTechnical).length+' anàlisis retornades';
-  $('discovernote').textContent='ACCIONS: '+(d.coverage?.stockCandidates||0)+' empreses revisades de '+(d.coverage?.stockUniverse||'?')+' en aquesta rotació. CRIPTO: selecció entre les monedes de més volum, fins a '+(d.coverage?.cryptoUniverse||100)+' examinades. Preselecció per variació i volum; reordenació per tendència 1D/4H (30 punts), RVOL (20), patró de ruptura/retest (20), R/R (15) i Explosive Watch (15). N/D quan falten dades tècniques. El score no és probabilitat ni READY. No avalua fonaments. '+(d.errors||[]).slice(0,2).join(' | ');
+  status.textContent=eq.filter(discoveryEligible).length+' accions · '+cr.filter(discoveryEligible).length+' criptomonedes amb PRE-SETUP o superior';
+  $('discovernote').textContent='ACCIONS: '+(d.coverage?.stockCandidates||0)+' empreses revisades de '+(d.coverage?.stockUniverse||'?')+' en aquesta rotació. CRIPTO: selecció entre les monedes de més volum, fins a '+(d.coverage?.cryptoUniverse||100)+' examinades. Només es mostren PRE-SETUP i PRE-READY (o READY quan existeixi), sense NO PERSEGUIR ni dades incompletes. Preselecció per variació i volum; reordenació per tendència 1D/4H (30 punts), RVOL (20), patró de ruptura/retest (20), R/R (15) i Explosive Watch (15). N/D quan falten dades tècniques. El score no és probabilitat ni READY. No avalua fonaments. '+(d.errors||[]).slice(0,2).join(' | ');
  }catch(e){status.textContent='Error en la consulta';$('discovernote').textContent='No s’han pogut obtenir candidats actualitzats: '+e.message}
  finally{btn.disabled=false}
 }
