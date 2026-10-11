@@ -162,7 +162,10 @@ const watchSort={key:'',direction:'desc'};
 function watchSortValue(tr,key){
  const sym=tr.dataset.s||'',q=quoteCache[sym]||{},a=scans[sym]||{};
  if(key==='symbol')return sym;
- if(key==='status')return a.status||'WATCH';
+ if(key==='status'){
+  const priority={'PRE-READY':0,'PRE-SETUP':1,'WATCH':2,'NO PERSEGUIR':3,'SENSE DADES':4};
+  return priority[a.status]??5;
+ }
  if(key==='price')return Number.isFinite(q.price)?q.price:null;
  if(key==='change')return Number.isFinite(q.changePct)?q.changePct:null;
  if(key==='score')return technicalScore(a);
