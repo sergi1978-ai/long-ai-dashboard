@@ -132,20 +132,35 @@ function paintDiscovery(){
 }
 document.querySelectorAll('.market-filter').forEach(b=>b.addEventListener('click',()=>{currentMarket=b.dataset.market;paintDiscovery()}));
 async function discover(){
- const btn=$('discover'),status=$('discoverstate');btn.disabled=true;status.textContent='Consultant accions i criptomonedes…';
+ const btn=$('discover'),status=$('discoverstate');btn.disabled=true;
+ let examined=0,techErrors=[],apiErrors=[];
  try{
-  const r=await fetch('/api/discover?offset='+rotation+'&count=15',{cache:'no-store'}),d=await r.json();
-  if(!r.ok)throw Error([d.error||'HTTP '+r.status,...(d.errors||[]).slice(0,2)].join(' · '));
-  const eq=d.stocks||[],cr=d.crypto||[];
-  lastDiscovery={stocks:eq,crypto:cr};dynamicStocks=eq.map(x=>x.symbol);dynamicCrypto=cr.map(x=>x.symbol);
-  rotation=(rotation+15)%(d.coverage?.stockUniverse||125);
-  window.longaiDiscovery=[...eq,...cr];discoveryTechnical={};paintDiscovery();
-  status.textContent='Preselecció rebuda; calculant tendència, volum i configuracions…';
-  const tech=await discoveryTechnicalFetch([...eq,...cr]);
-  discoveryTechnical=tech.out;paintDiscovery();
-  status.textContent=eq.filter(discoveryEligible).length+' accions · '+cr.filter(discoveryEligible).length+' criptomonedes amb PRE-SETUP o superior';
-  $('discovernote').textContent='ACCIONS: '+(d.coverage?.stockCandidates||0)+' empreses revisades de '+(d.coverage?.stockUniverse||'?')+' en aquesta rotació. CRIPTO: selecció entre les monedes de més volum, fins a '+(d.coverage?.cryptoUniverse||100)+' examinades. Només es mostren PRE-SETUP i PRE-READY (o READY quan existeixi), sense NO PERSEGUIR ni dades incompletes. Preselecció per variació i volum; reordenació per tendència 1D/4H (30 punts), RVOL (20), patró de ruptura/retest (20), R/R (15) i Explosive Watch (15). N/D quan falten dades tècniques. El score no és probabilitat ni READY. No avalua fonaments. '+(d.errors||[]).slice(0,2).join(' | ');
- }catch(e){status.textContent='Error en la consulta';$('discovernote').textContent='No s’han pogut obtenir candidats actualitzats: '+e.message}
+  let stockPool=[],cryptoPool=[],observed=new Set();
+  // Fins a dues rotacions de 15 accions; si no n'hi ha cap preparada, ampliar automàticament.
+  for(let round=0;round<2;round++){
+   status.textContent=round?'Ampliant la cerca a més accions…':'Buscant oportunitats en accions i criptomonedes…';
+   const r=await fetch('/api/discover?offset='+rotation+'&count=15',{cache:'no-store'}),d=await r.json();
+   if(!r.ok)throw Error(d.error||'HTTP '+r.status);
+   rotation=(rotation+15)%(d.coverage?.stockUniverse||125);
+   examined+=Number(d.coverage?.stockCandidates)||0;
+   apiErrors.push(...(d.errors||[]));
+   const newStocks=(d.stocks||[]).filter(x=>!observed.has('S:'+x.symbol));
+   newStocks.forEach(x=>observed.add('S:'+x.symbol));stockPool.push(...newStocks);
+   if(!round){cryptoPool=d.crypto||[]}
+   const candidates=round?newStocks:[...newStocks,...cryptoPool];
+   status.textContent='Analitzant '+candidates.length+' candidats amb el motor tècnic…';
+   const tech=await discoveryTechnicalFetch(candidates);
+   Object.assign(discoveryTechnical,tech.out);techErrors.push(...tech.errors);
+   lastDiscovery={stocks:stockPool,crypto:cryptoPool};
+   dynamicStocks=stockPool.map(x=>x.symbol);dynamicCrypto=cryptoPool.map(x=>x.symbol);
+   window.longaiDiscovery=[...stockPool,...cryptoPool];
+   paintDiscovery();
+   if(stockPool.some(discoveryEligible)&&cryptoPool.some(discoveryEligible))break;
+  }
+  const okStocks=stockPool.filter(discoveryEligible).length,okCrypto=cryptoPool.filter(discoveryEligible).length;
+  status.textContent=okStocks+' accions · '+okCrypto+' criptomonedes PRE-SETUP o superior';
+  $('discovernote').textContent='Revisades fins a '+examined+' accions en dues rotacions (quan cal); cripto preseleccionada per volum i parell Coinbase. Només apareixen configuracions PRE-SETUP o superiors, amb RVOL, momentum, liquiditat i extensió vàlids. Dades tècniques orientatives: NO equivalen a un senyal del Pine. '+(techErrors.length?'Sense anàlisi: '+techErrors.length+' actius. ':'')+(apiErrors.length?'Incidències de proveïdor: '+apiErrors.length+'.':'');
+ }catch(e){status.textContent='No s’ha pogut completar la cerca';$('discovernote').textContent='Error en la cerca: '+e.message}
  finally{btn.disabled=false}
 }
 $('discover').addEventListener('click',discover);
