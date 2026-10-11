@@ -11,7 +11,8 @@ async function cryptoCoinbase(symbol){
   const pair=symbol+'-'+quote;
   try{
    const [x,stats]=await Promise.all([json('https://api.exchange.coinbase.com/products/'+pair+'/ticker'),json('https://api.exchange.coinbase.com/products/'+pair+'/stats')]);
-   const p=Number(x.price),dayOpen=Number(stats.open);if(!(p>0))throw Error('No price');
+   const p=Number(x.price),dayOpen=Number(stats.open),quoteMs=Date.parse(x.time||'');if(!(p>0))throw Error('No price');
+   if(!Number.isFinite(quoteMs)||quoteMs>Date.now()+60000||Date.now()-quoteMs>2*3600000)throw Error('stale_or_missing_coinbase_quote');
    return {symbol,type:'cripto',price:p,changePct:dayOpen>0?100*(p/dayOpen-1):null,quoteTime:x.time||null,source:'Coinbase '+pair,pair,status:'WATCH',verifiedSignal:false};
   }catch(e){failure=String(e.message||e)}
  }
