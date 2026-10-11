@@ -106,14 +106,20 @@ function analyze(symbol,type,d,h,f){const stock=type==='acció';const C=f.at(-1)
  if(breakout||retest||nearBreakout){trigger=breakout?C.c:retest?C.h:high;stop=Math.min(low,C.l)-0.18*(F.atr??0);const risk=trigger-stop;if(!(risk>0&&F.atr>0)){trigger=null;stop=null}else{const highs=h.slice(-85,-1).filter(x=>x.h>trigger+0.1*F.atr).map(x=>x.h).sort((a,b)=>a-b);tp1=highs.length?highs[0]:null;rr=tp1!==null?(tp1-trigger)/risk:null;tp2=tp1!==null?trigger+2.5*risk:null}}
  // Filtres de NO PERSEGUIR: un patró positiu no anul·la un preu massa estès.
  const extensionATR=atr4>0&&H.ema20>0?(C.c-H.ema20)/atr4:null;
+ // L'extensió també s'ha de comprovar en la temporalitat de decisió (30m/1H).
+ // L'EMA20 4H pot quedar massa lluny del moviment intradia i no detectar un impuls estès.
+ const extensionDecisionATR=F.atr>0&&F.ema20>0?(C.c-F.ema20)/F.atr:null;
+ const extensionDecisionPct=F.ema20>0?100*(C.c/F.ema20-1):null;
  const stopRiskPct=trigger>0&&stop!==null?100*(trigger-stop)/trigger:null;
- const tooExtended=extensionATR!==null&&extensionATR>2;
+ const tooExtended4H=extensionATR!==null&&extensionATR>2;
+ const tooExtendedDecision=extensionDecisionATR!==null&&extensionDecisionATR>1.5;
+ const tooExtended=tooExtended4H||tooExtendedDecision;
  const excessiveRisk=stopRiskPct!==null&&stopRiskPct>10;
  const noChase=tooExtended||excessiveRisk;
  let status='WATCH',reason='Sense confirmació de tendència i patró';
  if(noChase){
   status='NO PERSEGUIR';
-  reason=tooExtended?'Preu per sobre de la EMA20 4H en més de 2 ATR; esperar retest': 'Stop tècnic superior al 10%; risc excessiu';
+  reason=tooExtended?(tooExtendedDecision?'Preu massa estès respecte a EMA20 de la temporalitat de decisió (>1,5 ATR); esperar retest':'Preu massa estès respecte a EMA20 4H (>2 ATR); esperar retest'): 'Stop tècnic superior al 10%; risc excessiu';
  }else if(higher&&(breakout||retest||nearBreakout)&&liquidOK&&rvol!==null&&rvol>=1.05&&momentum&&extensionOK){
   // PRE-SETUP exigeix estructura, momentum, liquiditat, RVOL i extensió admissible.
   status='PRE-SETUP';reason='Estructura, momentum, liquiditat i volum preliminars; validar entrada al Pine';
@@ -121,7 +127,7 @@ function analyze(symbol,type,d,h,f){const stock=type==='acció';const C=f.at(-1)
    status='PRE-READY';reason='Ruptura/retest, volum i R/R favorables; falta confirmació al Pine';
   }
  }
- return {...base,status,reason,noChase,extensionATR,stopRiskPct,pattern,volumeRatio:rvol,trigger,stop,tp1,tp2,rr,trendD,trend4H,explosiveWatch,explosiveDirection,explosiveEligible,compressionRatio:bbRatio,atrCompressionRatio:atrRatio,explosiveChecks,filters:{higher,momentum,breakout,retest,volume:volOk,liquidity:liquidOK,extension:extensionOK,rr:rr!==null&&rr>=2},dataQuality:rvol===null?'volume_unavailable':'ok',warning:'Motor web orientatiu; READY formal desactivat. RVOL es mostra N/D si no es pot comparar.'}
+ return {...base,status,reason,noChase,extensionATR,extensionDecisionATR,extensionDecisionPct,tooExtended4H,tooExtendedDecision,stopRiskPct,pattern,volumeRatio:rvol,trigger,stop,tp1,tp2,rr,trendD,trend4H,explosiveWatch,explosiveDirection,explosiveEligible,compressionRatio:bbRatio,atrCompressionRatio:atrRatio,explosiveChecks,filters:{higher,momentum,breakout,retest,volume:volOk,liquidity:liquidOK,extension:extensionOK,rr:rr!==null&&rr>=2},dataQuality:rvol===null?'volume_unavailable':'ok',warning:'Motor web orientatiu; READY formal desactivat. RVOL es mostra N/D si no es pot comparar.'}
 }
 async function one(symbol,forceCrypto=false,scanTf='30m'){
  const isStock=!forceCrypto&&STOCKS.has(symbol),isCrypto=forceCrypto||(!isStock&&/^[A-Z0-9]{2,16}$/.test(symbol));
