@@ -114,11 +114,14 @@ function analyze(symbol,type,d,h,f){const stock=type==='acció';const C=f.at(-1)
  if(noChase){
   status='NO PERSEGUIR';
   reason=tooExtended?'Preu per sobre de la EMA20 4H en més de 2 ATR; esperar retest': 'Stop tècnic superior al 10%; risc excessiu';
- }else if(higher&&(breakout||retest||nearBreakout)){
-  status='PRE-SETUP';reason='Configuració preliminar; cal validar volum i benefici/risc';
-  if((breakout||retest)&&volOk&&momentum&&rr!==null&&rr>=2){status='PRE-READY';reason='Filtres favorables; falta validar Pine, estructura i liquiditat'}
+ }else if(higher&&(breakout||retest||nearBreakout)&&liquidOK&&rvol!==null&&rvol>=1.05&&momentum&&extensionOK){
+  // PRE-SETUP exigeix estructura, momentum, liquiditat, RVOL i extensió admissible.
+  status='PRE-SETUP';reason='Estructura, momentum, liquiditat i volum preliminars; validar entrada al Pine';
+  if((breakout||retest)&&volOk&&rr!==null&&rr>=2&&stopRiskPct!==null&&stopRiskPct<=10){
+   status='PRE-READY';reason='Ruptura/retest, volum i R/R favorables; falta confirmació al Pine';
+  }
  }
- return {...base,status,reason,noChase,extensionATR,stopRiskPct,pattern,volumeRatio:rvol,trigger,stop,tp1,tp2,rr,trendD,trend4H,explosiveWatch,explosiveDirection,explosiveEligible,compressionRatio:bbRatio,atrCompressionRatio:atrRatio,explosiveChecks,filters:{higher,momentum,breakout,retest,volume:volOk,rr:rr!==null&&rr>=2},dataQuality:rvol===null?'volume_unavailable':'ok',warning:'Motor web orientatiu; READY formal desactivat. RVOL es mostra N/D si no es pot comparar.'}
+ return {...base,status,reason,noChase,extensionATR,stopRiskPct,pattern,volumeRatio:rvol,trigger,stop,tp1,tp2,rr,trendD,trend4H,explosiveWatch,explosiveDirection,explosiveEligible,compressionRatio:bbRatio,atrCompressionRatio:atrRatio,explosiveChecks,filters:{higher,momentum,breakout,retest,volume:volOk,liquidity:liquidOK,extension:extensionOK,rr:rr!==null&&rr>=2},dataQuality:rvol===null?'volume_unavailable':'ok',warning:'Motor web orientatiu; READY formal desactivat. RVOL es mostra N/D si no es pot comparar.'}
 }
 async function one(symbol,forceCrypto=false,scanTf='30m'){
  const isStock=!forceCrypto&&STOCKS.has(symbol),isCrypto=forceCrypto||(!isStock&&/^[A-Z0-9]{2,16}$/.test(symbol));
