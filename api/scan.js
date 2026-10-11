@@ -104,8 +104,21 @@ function analyze(symbol,type,d,h,f){const stock=type==='acció';const C=f.at(-1)
  const explosiveDirection=C.c>H.ema20&&H.ema20>H.ema50&&C.c>f.at(-4)?.c?'ALCISTA':C.c<H.ema20&&H.ema20<H.ema50&&C.c<f.at(-4)?.c?'BAIXISTA':'NEUTRE';
  let trigger=null,stop=null,tp1=null,tp2=null,rr=null;
  if(breakout||retest||nearBreakout){trigger=breakout?C.c:retest?C.h:high;stop=Math.min(low,C.l)-0.18*(F.atr??0);const risk=trigger-stop;if(!(risk>0&&F.atr>0)){trigger=null;stop=null}else{const highs=h.slice(-85,-1).filter(x=>x.h>trigger+0.1*F.atr).map(x=>x.h).sort((a,b)=>a-b);tp1=highs.length?highs[0]:null;rr=tp1!==null?(tp1-trigger)/risk:null;tp2=tp1!==null?trigger+2.5*risk:null}}
- let status='WATCH',reason='Sense confirmació de tendència i patró';if(higher&&(breakout||retest||nearBreakout)){status='PRE-SETUP';reason='Configuració preliminar; cal validar volum i benefici/risc';if((breakout||retest)&&volOk&&momentum&&rr!==null&&rr>=2){status='PRE-READY';reason='Filtres favorables; falta validar Pine, estructura i liquiditat'}}
- return {...base,status,reason,pattern,volumeRatio:rvol,trigger,stop,tp1,tp2,rr,trendD,trend4H,explosiveWatch,explosiveDirection,explosiveEligible,compressionRatio:bbRatio,atrCompressionRatio:atrRatio,explosiveChecks,filters:{higher,momentum,breakout,retest,volume:volOk,rr:rr!==null&&rr>=2},dataQuality:rvol===null?'volume_unavailable':'ok',warning:'Motor web orientatiu; READY formal desactivat. RVOL es mostra N/D si no es pot comparar.'}
+ // Filtres de NO PERSEGUIR: un patró positiu no anul·la un preu massa estès.
+ const extensionATR=atr4>0&&H.ema20>0?(C.c-H.ema20)/atr4:null;
+ const stopRiskPct=trigger>0&&stop!==null?100*(trigger-stop)/trigger:null;
+ const tooExtended=extensionATR!==null&&extensionATR>2;
+ const excessiveRisk=stopRiskPct!==null&&stopRiskPct>10;
+ const noChase=tooExtended||excessiveRisk;
+ let status='WATCH',reason='Sense confirmació de tendència i patró';
+ if(noChase){
+  status='NO PERSEGUIR';
+  reason=tooExtended?'Preu per sobre de la EMA20 4H en més de 2 ATR; esperar retest': 'Stop tècnic superior al 10%; risc excessiu';
+ }else if(higher&&(breakout||retest||nearBreakout)){
+  status='PRE-SETUP';reason='Configuració preliminar; cal validar volum i benefici/risc';
+  if((breakout||retest)&&volOk&&momentum&&rr!==null&&rr>=2){status='PRE-READY';reason='Filtres favorables; falta validar Pine, estructura i liquiditat'}
+ }
+ return {...base,status,reason,noChase,extensionATR,stopRiskPct,pattern,volumeRatio:rvol,trigger,stop,tp1,tp2,rr,trendD,trend4H,explosiveWatch,explosiveDirection,explosiveEligible,compressionRatio:bbRatio,atrCompressionRatio:atrRatio,explosiveChecks,filters:{higher,momentum,breakout,retest,volume:volOk,rr:rr!==null&&rr>=2},dataQuality:rvol===null?'volume_unavailable':'ok',warning:'Motor web orientatiu; READY formal desactivat. RVOL es mostra N/D si no es pot comparar.'}
 }
 async function one(symbol,forceCrypto=false,scanTf='30m'){
  const isStock=!forceCrypto&&STOCKS.has(symbol),isCrypto=forceCrypto||(!isStock&&/^[A-Z0-9]{2,16}$/.test(symbol));
