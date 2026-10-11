@@ -163,8 +163,10 @@ function watchSortValue(tr,key){
  const sym=tr.dataset.s||'',q=quoteCache[sym]||{},a=scans[sym]||{};
  if(key==='symbol')return sym;
  if(key==='status'){
-  const priority={'PRE-READY':0,'PRE-SETUP':1,'WATCH':2,'NO PERSEGUIR':3,'SENSE DADES':4};
-  return priority[a.status]??5;
+  const state=String(a.status||'WATCH').toUpperCase();
+  if(/^READY(?:\\s|$)/.test(state))return state.includes('A+')?0:1;
+  const priority={'PRE-READY':2,'PRE-SETUP':3,'WATCH':4,'NO PERSEGUIR':5,'SENSE DADES':6};
+  return priority[state]??7;
  }
  if(key==='price')return Number.isFinite(q.price)?q.price:null;
  if(key==='change')return Number.isFinite(q.changePct)?q.changePct:null;
