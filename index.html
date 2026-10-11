@@ -133,7 +133,7 @@ function paintDiscovery(){
 document.querySelectorAll('.market-filter').forEach(b=>b.addEventListener('click',()=>{currentMarket=b.dataset.market;paintDiscovery()}));
 async function discover(){
  const btn=$('discover'),status=$('discoverstate');btn.disabled=true;
- let examined=0,techErrors=[],apiErrors=[];
+ let examined=0,techErrors=[],apiErrors=[];discoveryTechnical={};lastDiscovery={stocks:[],crypto:[]};paintDiscovery();
  try{
   let stockPool=[],cryptoPool=[],observed=new Set();
   // Fins a dues rotacions de 15 accions; si no n'hi ha cap preparada, ampliar automàticament.
@@ -155,11 +155,11 @@ async function discover(){
    dynamicStocks=stockPool.map(x=>x.symbol);dynamicCrypto=cryptoPool.map(x=>x.symbol);
    window.longaiDiscovery=[...stockPool,...cryptoPool];
    paintDiscovery();
-   if(stockPool.some(discoveryEligible)&&cryptoPool.some(discoveryEligible))break;
+   if(stockPool.some(discoveryEligible))break;
   }
   const okStocks=stockPool.filter(discoveryEligible).length,okCrypto=cryptoPool.filter(discoveryEligible).length;
   status.textContent=okStocks+' accions · '+okCrypto+' criptomonedes PRE-SETUP o superior';
-  $('discovernote').textContent='Revisades fins a '+examined+' accions en dues rotacions (quan cal); cripto preseleccionada per volum i parell Coinbase. Només apareixen configuracions PRE-SETUP o superiors, amb RVOL, momentum, liquiditat i extensió vàlids. Dades tècniques orientatives: NO equivalen a un senyal del Pine. '+(techErrors.length?'Sense anàlisi: '+techErrors.length+' actius. ':'')+(apiErrors.length?'Incidències de proveïdor: '+apiErrors.length+'.':'');
+  $('discovernote').textContent='Revisades '+examined+' accions en una o dues rotacions (quan cal); cripto preseleccionada per volum i parell Coinbase. Només apareixen configuracions PRE-SETUP o superiors, amb RVOL, momentum, liquiditat i extensió vàlids. Dades tècniques orientatives: NO equivalen a un senyal del Pine. '+(techErrors.length?'Sense anàlisi: '+techErrors.length+' actius. ':'')+(apiErrors.length?'Incidències de proveïdor: '+apiErrors.length+'.':'');
  }catch(e){status.textContent='No s’ha pogut completar la cerca';$('discovernote').textContent='Error en la cerca: '+e.message}
  finally{btn.disabled=false}
 }
