@@ -164,7 +164,7 @@ function watchSortValue(tr,key){
  if(key==='symbol')return sym;
  if(key==='status'){
   const state=String(a.status||'WATCH').toUpperCase();
-  if(/^READY(?:\\s|$)/.test(state))return state.includes('A+')?0:1;
+  if(state==='READY'||state.startsWith('READY '))return state.includes('A+')?0:1;
   const priority={'PRE-READY':2,'PRE-SETUP':3,'WATCH':4,'NO PERSEGUIR':5,'SENSE DADES':6};
   return priority[state]??7;
  }
