@@ -1,5 +1,5 @@
 const STOCKS=['UBER','GTLB','OXY','SNOW','CRM','ABBV','PEP','CVX','RTX','HAE'];
-const CRYPTOS={BTC:'bitcoin',ETH:'ethereum',SOL:'solana',AVAX:'avalanche-2',AAVE:'aave',LINK:'chainlink',UNI:'uniswap',DOGE:'dogecoin',LTC:'litecoin',BCH:'bitcoin-cash'};
+const CRYPTOS={BTC:'bitcoin',ETH:'ethereum',SOL:'solana',AVAX:'avalanche-2',AAVE:'aave',LINK:'chainlink',UNI:'uniswap',DOGE:'dogecoin',LTC:'litecoin',BCH:'bitcoin-cash',MET:'meteora',HYPE:'hyperliquid'};
 const allowed=new Set([...STOCKS,...Object.keys(CRYPTOS)]);
 const validStock=s=>/^[A-Z][A-Z0-9.\-]{0,9}$/.test(s);
 const wait=(p,ms=9500)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),ms))]);
