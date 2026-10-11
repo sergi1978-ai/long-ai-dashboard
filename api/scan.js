@@ -1,6 +1,6 @@
 // LONG AI 1.2 — Escàner orientatiu, NO replica exacta del Pine v6.4.1.
 // Càlculs server-side, sense claus ni ordres. Font Yahoo Finance Chart per accions;
-// Binance public klines per cripto quan la regió ho permet.
+// Coinbase Exchange public candles per cripto: 1D, 4H i 30m.
 const STOCKS=new Set(["UBER", "GTLB", "OXY", "SNOW", "CRM", "ABBV", "PEP", "CVX", "RTX", "HAE", "NVDA", "MU", "ANET", "COHR", "PLTR", "FROG", "RKLB", "APLD", "PANW", "CRWD", "MSFT", "GOOGL", "AMZN", "META", "AAPL", "AMD", "AVGO", "TSM", "ASML", "AMAT", "LRCX", "KLAC", "MRVL", "SMCI", "ORCL", "NET", "DDOG", "SHOP", "NOW", "INTU", "RBRK", "ZS", "FTNT", "OKTA", "PATH", "MDB", "HUBS", "TWLO", "HOOD", "COIN", "MSTR", "SQ", "PYPL", "SOFI", "AFRM", "IBKR", "GS", "JPM", "BAC", "C", "XOM", "SLB", "HAL", "KOS", "COP", "EOG", "MPC", "VLO", "GEV", "ETN", "PWR", "VST", "CEG", "BE", "OKLO", "CCJ", "NEE", "DUK", "GE", "CAT", "DE", "URI", "BA", "LMT", "NOC", "KTOS", "HIMS", "TEM", "UNH", "LLY", "MRK", "PFE", "GILD", "REGN", "TMO", "ISRG", "DXCM", "ROST", "COST", "WMT", "TGT", "HD", "LOW", "CMG", "MCD", "SBUX", "NFLX", "DIS", "SPOT", "ROKU", "TTD", "ABNB", "BKNG", "RCL", "CCL", "DAL", "UAL", "TSLA", "RIVN", "LCID", "NIO", "F", "GM"]);
 const CRYPTOS=new Set(['BTC','ETH','SOL','AVAX','AAVE','LINK','UNI','DOGE','LTC','BCH','SUI','ONDO','RENDER','NEAR','TIA','XRP','ENA','INJ','ARB','JUP','MET','HYPE']);
 const timeout=async(url)=>{const ctl=new AbortController();const id=setTimeout(()=>ctl.abort(),7000);try{const r=await fetch(url,{signal:ctl.signal,headers:{'Accept':'application/json','User-Agent':'Mozilla/5.0 LONG-AI-Radar'}});if(!r.ok)throw Error('HTTP '+r.status);return r.json()}finally{clearTimeout(id)}};
@@ -10,6 +10,27 @@ function clean(bars){return bars.filter(x=>validTime(x.t)&&[x.o,x.h,x.l,x.c].eve
 async function yahooFetch(url){let errors=[];for(const host of ['query1.finance.yahoo.com','query2.finance.yahoo.com']){try{return await timeout(url.replace('query1.finance.yahoo.com',host))}catch(e){errors.push(host+': '+e.message)}}throw Error('Yahoo Finance '+errors.join(' | '))}
 async function yahoo(symbol,interval,range){const u=`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=${interval}&range=${range}&includePrePost=false`;const j=await yahooFetch(u),x=j?.chart?.result?.[0],q=x?.indicators?.quote?.[0];if(!q||!Array.isArray(x.timestamp))throw Error('no_chart_or_timestamps');let b=x.timestamp.map((t,i)=>({t:Number(t)*1000,o:q.open?.[i],h:q.high?.[i],l:q.low?.[i],c:q.close?.[i],v:q.volume?.[i]}));const filtered=clean(b);if(!filtered.length)throw Error('no_valid_candles_'+interval+'_'+range);return filtered}
 async function binance(symbol,interval,limit){const s=symbol+'USDT',u=`https://api.binance.com/api/v3/klines?symbol=${s}&interval=${interval}&limit=${limit}`;const a=await timeout(u);if(!Array.isArray(a))throw Error('no klines');return clean(a.map(x=>({t:x[0],o:+x[1],h:+x[2],l:+x[3],c:+x[4],v:+x[5]})))}
+// Coinbase Exchange public candles; 300 bars per granularity request.
+// Prefer USD; try USDC on pairs not listed against USD. Never mix exchanges.
+const CB='https://api.exchange.coinbase.com';
+async function coinbaseCandleRequest(pair,seconds){
+ const u=CB+'/products/'+encodeURIComponent(pair)+'/candles?granularity='+seconds;
+ const a=await timeout(u);
+ if(!Array.isArray(a))throw Error('coinbase_invalid_candles_'+pair);
+ // Coinbase candles: [start,low,high,open,close,volume], timestamp in seconds.
+ return clean(a.map(x=>({t:Number(x[0])*1000,l:+x[1],h:+x[2],o:+x[3],c:+x[4],v:+x[5]})));
+}
+async function coinbaseCandles(symbol){
+ let failures=[];
+ for(const pair of [symbol+'-USD',symbol+'-USDC']){
+  try{
+   const result=await Promise.all([coinbaseCandleRequest(pair,86400),coinbaseCandleRequest(pair,14400),coinbaseCandleRequest(pair,1800)]);
+   if(result.some(x=>x.length<60))throw Error('coinbase_insufficient_history');
+   return {pair,d:result[0],h:result[1],f:result[2]};
+  }catch(e){failures.push(pair+': '+String(e.message||e))}
+ }
+ throw Error('Coinbase no disposa de dades suficients per '+symbol+' ('+failures.join(' / ')+')');
+}
 function aggregate(a,n){
  // Agrupa per finestres UTC fixes: evita desplacaments segons el nombre de barres retornades.
  const groups=new Map(),ms=n*3600000;
@@ -88,17 +109,16 @@ async function one(symbol){
   // Daily candles originate at midnight or opening timestamp; never filter daily bars by intraday session.
   d=closed(x[0],86400000,false);h=closed(x[1],3600000,true);f=closed(x[2],1800000,true);
  }else{
-  try{[d,h,f]=await Promise.all([binance(symbol,'1d',260),binance(symbol,'1h',500),binance(symbol,'30m',400)]);source='Binance public klines'}
-  catch(err){
-   // Some Vercel regions cannot reach Binance. Use public Yahoo USD historical candles if available.
-   const sym=symbol+'-USD';try{[d,h,f]=await Promise.all([yahoo(sym,'1d','1y'),yahoo(sym,'60m','3mo'),yahoo(sym,'30m','1mo')]);source='Yahoo Finance crypto chart (Binance inaccessible: '+err.message+')'}catch(alt){throw Error('Crypto primary: '+err.message+'; fallback: '+alt.message)}
-  }
-  d=closed(d,86400000);h=closed(h,3600000);f=closed(f,1800000)
+  // 1D + 4H directament de Coinbase, 30m també de Coinbase.
+  const cb=await coinbaseCandles(symbol);
+  d=closed(cb.d,86400000);h=closed(cb.h,14400000);f=closed(cb.f,1800000);
+  source='Coinbase Exchange · '+cb.pair;
+
  }
  // En accions, les sessions NYSE no omplen finestres UTC 4H completes.
  // Conservar un context d'hores regulars orientatiu fins a reproduir les barres 4H de TradingView.
- const four=isStock?aggregateRegularStockHours(h):aggregate(h,4);if(!d.length||!f.length)throw Error('no_valid_candles_after_filter');const result=analyze(symbol,isStock?'acció':'cripto',d,four,f);
+ const four=isStock?aggregateRegularStockHours(h):h;if(!d.length||!f.length)throw Error('no_valid_candles_after_filter');const result=analyze(symbol,isStock?'acció':'cripto',d,four,f);
  result.source=source;
  return result;
 }
-export default async function handler(req,res){res.setHeader('Cache-Control','public,s-maxage=120,stale-while-revalidate=240');if(req.method!=='GET')return res.status(405).json({error:'method_not_allowed'});const requested=String(req.query?.symbols||'UBER,GTLB,OXY,SNOW,AVAX').split(',').map(x=>x.trim().toUpperCase()).filter(Boolean);const names=[...new Set(requested)].slice(0,5);let results=await Promise.allSettled(names.map(one));const analyses=[],errors=[];results.forEach((r,i)=>r.status==='fulfilled'?analyses.push(r.value):errors.push({symbol:names[i],message:String(r.reason?.message||r.reason)}));return res.status(200).json({analyses,errors,updatedAt:new Date().toISOString(),version:'1.6.16-early-web',mode:'indicative_technical_screen',important:'Estats i Explosive Watch orientatius del motor web, NO equivalen a Pine LONG AI; READY formal desactivat sense validacio completa.'})}
+export default async function handler(req,res){res.setHeader('Cache-Control','public,s-maxage=120,stale-while-revalidate=240');if(req.method!=='GET')return res.status(405).json({error:'method_not_allowed'});const requested=String(req.query?.symbols||'UBER,GTLB,OXY,SNOW,AVAX').split(',').map(x=>x.trim().toUpperCase()).filter(Boolean);const names=[...new Set(requested)].slice(0,5);let results=await Promise.allSettled(names.map(one));const analyses=[],errors=[];results.forEach((r,i)=>r.status==='fulfilled'?analyses.push(r.value):errors.push({symbol:names[i],message:String(r.reason?.message||r.reason)}));return res.status(200).json({analyses,errors,updatedAt:new Date().toISOString(),version:'1.7-coinbase',mode:'indicative_technical_screen',important:'Estats i Explosive Watch orientatius del motor web, NO equivalen a Pine LONG AI; READY formal desactivat sense validacio completa.'})}
