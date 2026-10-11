@@ -20,11 +20,20 @@ async function coinbaseCandleRequest(pair,seconds){
  // Coinbase candles: [start,low,high,open,close,volume], timestamp in seconds.
  return clean(a.map(x=>({t:Number(x[0])*1000,l:+x[1],h:+x[2],o:+x[3],c:+x[4],v:+x[5]})));
 }
+function aggregateQuarterHours(a){
+ const groups=new Map(),ms=1800000;
+ for(const x of a){const key=Math.floor(x.t/ms)*ms;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(x)}
+ return [...groups].sort((a,b)=>a[0]-b[0]).filter(([,z])=>z.length===2).map(([t,z])=>({
+  t,o:z[0].o,h:Math.max(z[0].h,z[1].h),l:Math.min(z[0].l,z[1].l),c:z[1].c,
+  v:Number.isFinite(z[0].v)&&Number.isFinite(z[1].v)?z[0].v+z[1].v:null
+ }));
+}
 async function coinbaseCandles(symbol){
  let failures=[];
  for(const pair of [symbol+'-USD',symbol+'-USDC']){
   try{
-   const result=await Promise.all([coinbaseCandleRequest(pair,86400),coinbaseCandleRequest(pair,14400),coinbaseCandleRequest(pair,1800)]);
+   const raw=await Promise.all([coinbaseCandleRequest(pair,86400),coinbaseCandleRequest(pair,3600),coinbaseCandleRequest(pair,900)]);
+   const result=[raw[0],aggregate(raw[1],4),aggregateQuarterHours(raw[2])];
    if(result.some(x=>x.length<60))throw Error('coinbase_insufficient_history');
    return {pair,d:result[0],h:result[1],f:result[2]};
   }catch(e){failures.push(pair+': '+String(e.message||e))}
@@ -109,7 +118,7 @@ async function one(symbol){
   // Daily candles originate at midnight or opening timestamp; never filter daily bars by intraday session.
   d=closed(x[0],86400000,false);h=closed(x[1],3600000,true);f=closed(x[2],1800000,true);
  }else{
-  // 1D + 4H directament de Coinbase, 30m també de Coinbase.
+  // Coinbase 1D nativa, 4H agregada de 1H, 30m agregada de 15m.
   const cb=await coinbaseCandles(symbol);
   d=closed(cb.d,86400000);h=closed(cb.h,14400000);f=closed(cb.f,1800000);
   source='Coinbase Exchange · '+cb.pair;
