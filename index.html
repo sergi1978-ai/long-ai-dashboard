@@ -193,7 +193,7 @@ function watchSortValue(tr,key){
  const sym=tr.dataset.s||'',q=quoteCache[sym]||{},a=scans[sym]||{};
  if(key==='symbol')return sym;
  if(key==='status'){
-  const state=String(a.status||'WATCH').toUpperCase();
+  const state=String(a.dataQuality==='ok'?(a.status||'SENSE DADES'):'SENSE DADES').toUpperCase();
   if(state==='READY'||state.startsWith('READY '))return state.includes('A+')?0:1;
   const priority={'PRE-READY':2,'PRE-SETUP':3,'WATCH':4,'NO PERSEGUIR':5,'SENSE DADES':6};
   return priority[state]??7;
@@ -242,7 +242,7 @@ render=function(){
   document.querySelectorAll('#rows tr[data-s]').forEach(tr=>{
     const symbol=tr.getAttribute('data-s'),analysis=scans[symbol],q=quoteCache[symbol];
     const cells=tr.querySelectorAll('td');if(cells.length<5)return;
-    const statusCell=cells[3]; statusCell.innerHTML='<span class="chip">'+esc(analysis?.status||'WATCH')+'</span>';
+    const statusCell=cells[3]; const shownStatus=analysis?.dataQuality==='ok'?(analysis.status||'SENSE DADES'):analysis?(analysis.dataQuality==='stale'?'DADES ANTIGUES':'DADES INSUFICIENTS'):(scanErrors[symbol]?'ERROR DE DADES':'PENDENT ANÀLISI'); statusCell.innerHTML='<span class="chip" title="'+esc(analysis?.reason||scanErrors[symbol]||'Estat orientatiu del motor web; contrastar amb Pine')+'">'+esc(shownStatus)+'</span>';
     const expCell=document.createElement('td');
     expCell.innerHTML=Number.isFinite(analysis?.explosiveWatch)?'<span class="exp-pill">'+analysis.explosiveWatch+'/5</span>':'<span class="dim">—</span>';
     const scoreCell=document.createElement('td');
