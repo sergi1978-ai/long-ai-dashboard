@@ -33,7 +33,7 @@ async function coinbaseHistory(symbol){
    const h4=timeAggregate(hour,14400000,4,3600000);
    const f30=timeAggregate(quarter,1800000,2,900000);
    if(day.length<65||h4.length<60||f30.length<65)throw Error('insufficient_history');
-   return {day,h4,f30,pair};
+   return {day,h4,h1:hour,f30,pair};
   }catch(e){reasons.push(pair+': '+String(e.message||e))}
  }
  throw Error('Coinbase unavailable: '+reasons.join('; '));
@@ -107,25 +107,25 @@ function analyze(symbol,type,d,h,f){const stock=type==='acció';const C=f.at(-1)
  let status='WATCH',reason='Sense confirmació de tendència i patró';if(higher&&(breakout||retest||nearBreakout)){status='PRE-SETUP';reason='Configuració preliminar; cal validar volum i benefici/risc';if((breakout||retest)&&volOk&&momentum&&rr!==null&&rr>=2){status='PRE-READY';reason='Filtres favorables; falta validar Pine, estructura i liquiditat'}}
  return {...base,status,reason,pattern,volumeRatio:rvol,trigger,stop,tp1,tp2,rr,trendD,trend4H,explosiveWatch,explosiveDirection,explosiveEligible,compressionRatio:bbRatio,atrCompressionRatio:atrRatio,explosiveChecks,filters:{higher,momentum,breakout,retest,volume:volOk,rr:rr!==null&&rr>=2},dataQuality:rvol===null?'volume_unavailable':'ok',warning:'Motor web orientatiu; READY formal desactivat. RVOL es mostra N/D si no es pot comparar.'}
 }
-async function one(symbol,forceCrypto=false){
+async function one(symbol,forceCrypto=false,scanTf='30m'){
  const isStock=!forceCrypto&&STOCKS.has(symbol),isCrypto=forceCrypto||(!isStock&&/^[A-Z0-9]{2,16}$/.test(symbol));
  if(!isStock&&!isCrypto)throw Error('symbol_not_supported');
  let d,h,f,source=isStock?'Yahoo Finance Chart':'Binance';
  if(isStock){
   const x=await Promise.all([yahoo(symbol,'1d','1y'),yahoo(symbol,'60m','3mo'),yahoo(symbol,'30m','1mo')]);
   // Daily candles originate at midnight or opening timestamp; never filter daily bars by intraday session.
-  d=closed(x[0],86400000,false);h=closed(x[1],3600000,true);f=closed(x[2],1800000,true);
+  d=closed(x[0],86400000,false);h=closed(x[1],3600000,true);f=scanTf==='1h'?h:closed(x[2],1800000,true);
  }else{
   const cb=await coinbaseHistory(symbol);
-  d=closed(cb.day,86400000);h=closed(cb.h4,14400000);f=closed(cb.f30,1800000);
+  d=closed(cb.day,86400000);h=closed(cb.h4,14400000);f=scanTf==='1h'?closed(cb.h1,3600000):closed(cb.f30,1800000);
   source='Coinbase Exchange '+cb.pair;
 
  }
  // En accions, les sessions NYSE no omplen finestres UTC 4H completes.
  // Conservar un context d'hores regulars orientatiu fins a reproduir les barres 4H de TradingView.
  const four=isStock?aggregateRegularStockHours(h):h;if(!d.length||!f.length)throw Error('no_valid_candles_after_filter');const result=analyze(symbol,isStock?'acció':'cripto',d,four,f);
- result.source=source;
+ result.source=source;result.timeframe=scanTf;
  if(isCrypto)result.pair=source.split(' ').at(-1);
  return result;
 }
-export default async function handler(req,res){res.setHeader('Cache-Control','public,s-maxage=120,stale-while-revalidate=240');if(req.method!=='GET')return res.status(405).json({error:'method_not_allowed'});const requested=String(req.query?.symbols||'UBER,GTLB,OXY,SNOW,AVAX').split(',').map(x=>x.trim().toUpperCase()).filter(Boolean);const names=[...new Set(requested)].slice(0,5);const forcedCrypto=new Set(String(req.query?.crypto||'').split(',').map(x=>x.trim().toUpperCase()));let results=await Promise.allSettled(names.map(x=>one(x,forcedCrypto.has(x))));const analyses=[],errors=[];results.forEach((r,i)=>r.status==='fulfilled'?analyses.push(r.value):errors.push({symbol:names[i],message:String(r.reason?.message||r.reason)}));return res.status(200).json({analyses,errors,updatedAt:new Date().toISOString(),version:'coinbase-web-v2',mode:'indicative_technical_screen',important:'Estats i Explosive Watch orientatius del motor web, NO equivalen a Pine LONG AI; READY formal desactivat sense validacio completa.'})}
+export default async function handler(req,res){res.setHeader('Cache-Control','public,s-maxage=120,stale-while-revalidate=240');if(req.method!=='GET')return res.status(405).json({error:'method_not_allowed'});const requested=String(req.query?.symbols||'UBER,GTLB,OXY,SNOW,AVAX').split(',').map(x=>x.trim().toUpperCase()).filter(Boolean);const names=[...new Set(requested)].slice(0,5);const forcedCrypto=new Set(String(req.query?.crypto||'').split(',').map(x=>x.trim().toUpperCase()));const tf=req.query?.tf==='1h'?'1h':'30m';let results=await Promise.allSettled(names.map(x=>one(x,forcedCrypto.has(x),tf)));const analyses=[],errors=[];results.forEach((r,i)=>r.status==='fulfilled'?analyses.push(r.value):errors.push({symbol:names[i],message:String(r.reason?.message||r.reason)}));return res.status(200).json({analyses,errors,updatedAt:new Date().toISOString(),version:'coinbase-web-v2',mode:'indicative_technical_screen',important:'Estats i Explosive Watch orientatius del motor web, NO equivalen a Pine LONG AI; READY formal desactivat sense validacio completa.'})}
