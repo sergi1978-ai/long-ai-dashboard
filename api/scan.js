@@ -37,15 +37,33 @@ function analyze(symbol,type,d,h,f){const stock=type==='acció';const C=f.at(-1)
  const age=Date.now()-C.t;const stale=stock?age>4*86400000:age>3*3600000;if(stale)return {...base,reason:'Dades massa antigues per validar un patró',dataQuality:'stale'};
  const prior=f.slice(-13,-1),high=Math.max(...prior.map(x=>x.h)),low=Math.min(...prior.map(x=>x.l));const rvol=rvolMatched(f,stock);const trendD=D.ema50!==null&&D.price>D.ema20&&D.ema20>D.ema50;const trend4H=H.ema50!==null&&H.price>H.ema20&&H.ema20>H.ema50;const higher=trendD&&trend4H;
  const momentum=F.rsi!==null&&F.rsi>=48&&F.rsi<=72;const breakout=C.c>high&&C.c>C.o;const retest=F.ema20!==null&&C.l<=F.ema20*1.008&&C.c>F.ema20&&C.c>C.o;const nearBreakout=!breakout&&high>0&&C.c>=high*0.99;const pattern=breakout?'RUPTURA':retest?'RETEST EMA20':nearBreakout?'RUPTURA PENDENT':'SENSE PATRÓ';const volOk=rvol!==null&&rvol>=1.35;
- // Indicador d'exploracio WEB: independent de READY i NO equivalent al Pine.
+ // Regles Early Explosive de LONG AI Pine v6.6.16, adaptades a barres tancades.
+ // Les dades i l'alineament de sessions poden diferir de request.security de TradingView.
  const bbRatio=compression4h(h);
- const explosiveChecks={trend1D:trendD,trend4H:trend4H,proximity:breakout||nearBreakout,volume:volOk,compression:bbRatio!==null&&bbRatio<0.8};
+ const atr4=H.atr;
+ const atrHistory=[];for(let i=14;i<h.length;i++){const v=atr(h.slice(0,i+1));if(Number.isFinite(v))atrHistory.push(v)}
+ const atrBaseline=atrHistory.slice(-40);
+ const atrAvg=atrBaseline.length===40?atrBaseline.reduce((a,b)=>a+b,0)/40:null;
+ const atrRatio=atrAvg>0?atr4/atrAvg:null;
+ const prior4=h.slice(-12),earlyHigh=prior4.length===12?Math.max(...prior4.map(x=>x.h)):null;
+ const earlyTrigger=earlyHigh;
+ const earlyDistanceATR=atr4>0&&earlyTrigger>0?(earlyTrigger-C.c)/atr4:null;
+ const earlyTrend=D.ema50>0&&H.ema50>0&&D.price>D.ema50*.94&&H.price>H.ema50*.97&&H.ema20>=H.ema50*.98;
+ const earlyCompression=bbRatio!==null&&bbRatio<=.90&&atrRatio!==null&&atrRatio<=1.05;
+ const earlyNear=earlyDistanceATR!==null&&earlyDistanceATR>=0&&earlyDistanceATR<=.65;
+ const earlyFirstImpulse=earlyTrigger>0&&atr4>0&&C.c>earlyTrigger&&C.c>C.o&&C.c<=earlyTrigger+.60*atr4&&rvol!==null&&rvol>=1.05;
+ const earlyVolume=rvol!==null&&rvol>=1.05;
+ const dailyTurn=d.slice(-20).reduce((sum,x)=>sum+(Number.isFinite(x.v)?x.c*x.v:0),0)/Math.min(d.length,20);
+ const liquidOK=dailyTurn>=1000000;
+ const extensionOK=atr4>0&&H.ema20>0&&C.c<=H.ema20+2*atr4;
+ const explosiveChecks={compression:earlyCompression,rupture:earlyNear||earlyFirstImpulse,volume:earlyVolume,trend:earlyTrend,liquidityAndExtension:liquidOK&&extensionOK};
  const explosiveWatch=Object.values(explosiveChecks).filter(Boolean).length;
- const explosiveDirection=trendD&&trend4H?'ALCISTA':!trendD&&!trend4H?'BAIXISTA':'NEUTRA';
+ const explosiveEligible=liquidOK&&extensionOK&&earlyTrend&&(earlyCompression||earlyNear||earlyFirstImpulse)&&explosiveWatch>=3;
+ const explosiveDirection=C.c>H.ema20&&H.ema20>H.ema50&&C.c>f.at(-4)?.c?'ALCISTA':C.c<H.ema20&&H.ema20<H.ema50&&C.c<f.at(-4)?.c?'BAIXISTA':'NEUTRE';
  let trigger=null,stop=null,tp1=null,tp2=null,rr=null;
  if(breakout||retest||nearBreakout){trigger=breakout?C.c:retest?C.h:high;stop=Math.min(low,C.l)-0.18*(F.atr??0);const risk=trigger-stop;if(!(risk>0&&F.atr>0)){trigger=null;stop=null}else{const highs=h.slice(-85,-1).filter(x=>x.h>trigger+0.1*F.atr).map(x=>x.h).sort((a,b)=>a-b);tp1=highs.length?highs[0]:null;rr=tp1!==null?(tp1-trigger)/risk:null;tp2=tp1!==null?trigger+2.5*risk:null}}
  let status='WATCH',reason='Sense confirmació de tendència i patró';if(higher&&(breakout||retest||nearBreakout)){status='PRE-SETUP';reason='Configuració preliminar; cal validar volum i benefici/risc';if((breakout||retest)&&volOk&&momentum&&rr!==null&&rr>=2){status='PRE-READY';reason='Filtres favorables; falta validar Pine, estructura i liquiditat'}}
- return {...base,status,reason,pattern,volumeRatio:rvol,trigger,stop,tp1,tp2,rr,trendD,trend4H,explosiveWatch,explosiveDirection,compressionRatio:bbRatio,explosiveChecks,filters:{higher,momentum,breakout,retest,volume:volOk,rr:rr!==null&&rr>=2},dataQuality:rvol===null?'volume_unavailable':'ok',warning:'Motor web orientatiu; READY formal desactivat. RVOL es mostra N/D si no es pot comparar.'}
+ return {...base,status,reason,pattern,volumeRatio:rvol,trigger,stop,tp1,tp2,rr,trendD,trend4H,explosiveWatch,explosiveDirection,explosiveEligible,compressionRatio:bbRatio,atrCompressionRatio:atrRatio,explosiveChecks,filters:{higher,momentum,breakout,retest,volume:volOk,rr:rr!==null&&rr>=2},dataQuality:rvol===null?'volume_unavailable':'ok',warning:'Motor web orientatiu; READY formal desactivat. RVOL es mostra N/D si no es pot comparar.'}
 }
 async function one(symbol){
  const isStock=STOCKS.has(symbol),isCrypto=CRYPTOS.has(symbol);
@@ -63,8 +81,8 @@ async function one(symbol){
   }
   d=closed(d,86400000);h=closed(h,3600000);f=closed(f,1800000)
  }
- const four=aggregate(h,4);if(!d.length||!f.length)throw Error('no_valid_candles_after_filter');const result=analyze(symbol,isStock?'acció':'cripto',d,four,f);
+ const four=aggregate(h,4); // Aproximacio: encara NO alineat amb 4H d'exchange de TradingView.if(!d.length||!f.length)throw Error('no_valid_candles_after_filter');const result=analyze(symbol,isStock?'acció':'cripto',d,four,f);
  result.source=source;
  return result;
 }
-export default async function handler(req,res){res.setHeader('Cache-Control','public,s-maxage=120,stale-while-revalidate=240');if(req.method!=='GET')return res.status(405).json({error:'method_not_allowed'});const requested=String(req.query?.symbols||'UBER,GTLB,OXY,SNOW,AVAX').split(',').map(x=>x.trim().toUpperCase()).filter(Boolean);const names=[...new Set(requested)].slice(0,5);let results=await Promise.allSettled(names.map(one));const analyses=[],errors=[];results.forEach((r,i)=>r.status==='fulfilled'?analyses.push(r.value):errors.push({symbol:names[i],message:String(r.reason?.message||r.reason)}));return res.status(200).json({analyses,errors,updatedAt:new Date().toISOString(),version:'1.3',mode:'indicative_technical_screen',important:'Estats i Explosive Watch orientatius del motor web, NO equivalen a Pine LONG AI; READY formal desactivat sense validacio completa.'})}
+export default async function handler(req,res){res.setHeader('Cache-Control','public,s-maxage=120,stale-while-revalidate=240');if(req.method!=='GET')return res.status(405).json({error:'method_not_allowed'});const requested=String(req.query?.symbols||'UBER,GTLB,OXY,SNOW,AVAX').split(',').map(x=>x.trim().toUpperCase()).filter(Boolean);const names=[...new Set(requested)].slice(0,5);let results=await Promise.allSettled(names.map(one));const analyses=[],errors=[];results.forEach((r,i)=>r.status==='fulfilled'?analyses.push(r.value):errors.push({symbol:names[i],message:String(r.reason?.message||r.reason)}));return res.status(200).json({analyses,errors,updatedAt:new Date().toISOString(),version:'1.6.16-early-web',mode:'indicative_technical_screen',important:'Estats i Explosive Watch orientatius del motor web, NO equivalen a Pine LONG AI; READY formal desactivat sense validacio completa.'})}
