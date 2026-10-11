@@ -273,7 +273,10 @@ async function refreshPersonalQuotes(){
   const batch=symbols.slice(i,i+20);try{const r=await fetch('/api/quotes?symbols='+encodeURIComponent(batch.join(','))+'&crypto='+encodeURIComponent(batch.filter(z=>watch.find(w=>w.symbol===z)?.type==='cripto').join(',')),{cache:'no-store'}),d=await r.json();if(!Array.isArray(d.quotes))throw Error('No hi ha resposta de cotitzacions');data.push(...d.quotes);fail.push(...(d.errors||[]));}
   catch(e){fail.push({reason:String(e.message||e),symbols:batch.join(',')});}
  }
- if(data.length){quotes=data;for(const q of data){if(isWatched(q.symbol))quoteCache[q.symbol]=q;}lastOk=new Date().toISOString();}
+ const returned=new Set(data.map(x=>x.symbol));
+ for(const symbol of symbols){if(!returned.has(symbol))delete quoteCache[symbol];}
+ quotes=data;
+ if(data.length){for(const q of data){if(isWatched(q.symbol))quoteCache[q.symbol]=q;}lastOk=new Date().toISOString();}
  $('notice').innerHTML='<b>Radar personal consultat.</b> '+data.length+'/'+symbols.length+' preus retornats; '+fail.length+' incidències. Les dades poden tenir retard. '+(fail.length?esc(fail.slice(0,2).map(e=>e.symbol||e.symbols||e.reason).join(', ')):'');
  render();return {success:data.length,errors:fail};
 }
