@@ -10,9 +10,9 @@ async function cryptoCoinbase(symbol){
  for(const quote of ['USD','USDC']){
   const pair=symbol+'-'+quote;
   try{
-   const x=await json('https://api.exchange.coinbase.com/products/'+pair+'/ticker');
-   const p=Number(x.price);if(!(p>0))throw Error('No price');
-   return {symbol,type:'cripto',price:p,changePct:null,quoteTime:x.time||null,source:'Coinbase '+pair,pair,status:'WATCH',verifiedSignal:false};
+   const [x,stats]=await Promise.all([json('https://api.exchange.coinbase.com/products/'+pair+'/ticker'),json('https://api.exchange.coinbase.com/products/'+pair+'/stats')]);
+   const p=Number(x.price),dayOpen=Number(stats.open);if(!(p>0))throw Error('No price');
+   return {symbol,type:'cripto',price:p,changePct:dayOpen>0?100*(p/dayOpen-1):null,quoteTime:x.time||null,source:'Coinbase '+pair,pair,status:'WATCH',verifiedSignal:false};
   }catch(e){failure=String(e.message||e)}
  }
  throw Error('Coinbase '+symbol+': '+failure);
