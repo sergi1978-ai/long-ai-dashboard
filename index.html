@@ -128,7 +128,7 @@ function paintDiscovery(){
  $('stock-result-count').textContent=lastDiscovery.stocks.filter(discoveryEligible).length;
  $('crypto-result-count').textContent=lastDiscovery.crypto.filter(discoveryEligible).length;
  document.querySelectorAll('.market-filter').forEach(b=>{const active=b.dataset.market===currentMarket;b.classList.toggle('is-active',active);b.setAttribute('aria-pressed',String(active))});
- $('discoverrows').innerHTML=items.length?items.map((x,i)=>'<tr data-discover="'+esc(x.symbol)+'"><td class="dim">'+(i+1)+'</td><td><b>'+esc(x.symbol)+'</b>'+(x.name?'<div class="small dim">'+esc(x.name)+'</div>':'')+'</td><td>'+number(x.price)+' $</td><td class="'+(x.changePct>=0?'plus':'minus')+'">'+(x.changePct==null?'—':(x.changePct>=0?'+':'')+Number(x.changePct).toFixed(2)+'%')+'</td><td>'+number(x.dollarVolume)+' $</td><td><span class="score score-'+scoreClass(discoveryScore(x))+'">'+(discoveryScore(x)==null?'N/D':discoveryScore(x)+'/100')+'</span></td><td><span class="chip">'+esc(discoveryTechnical[x.symbol]?.status||'NO ANALITZAT')+'</span></td><td><button type="button" class="watch-add" data-watch-add="'+esc(x.symbol)+'" '+(isWatched(x.symbol)?'disabled':'')+'>'+(isWatched(x.symbol)?'✓ Desat':'+ Seguir')+'</button></td></tr>').join(''):'<tr><td colspan="7" class="dim">Cap candidat PRE-SETUP o superior amb dades tècniques vàlides en aquesta cerca. Prova una altra rotació.</td></tr>';
+ $('discoverrows').innerHTML=items.length?items.map((x,i)=>'<tr data-discover="'+esc(x.symbol)+'"><td class="dim">'+(i+1)+'</td><td><b>'+esc(x.symbol)+'</b>'+(x.name?'<div class="small dim">'+esc(x.name)+'</div>':'')+'</td><td>'+number(discoveryTechnical[x.symbol]?.price??x.price)+' $</td><td class="'+(x.changePct>=0?'plus':'minus')+'">'+(x.changePct==null?'—':(x.changePct>=0?'+':'')+Number(x.changePct).toFixed(2)+'%')+'</td><td>'+number(x.dollarVolume)+' $</td><td><span class="score score-'+scoreClass(discoveryScore(x))+'">'+(discoveryScore(x)==null?'N/D':discoveryScore(x)+'/100')+'</span></td><td><span class="chip">'+esc(discoveryTechnical[x.symbol]?.status||'NO ANALITZAT')+'</span></td><td><button type="button" class="watch-add" data-watch-add="'+esc(x.symbol)+'" '+(isWatched(x.symbol)?'disabled':'')+'>'+(isWatched(x.symbol)?'✓ Desat':'+ Seguir')+'</button></td></tr>').join(''):'<tr><td colspan="7" class="dim">Cap candidat PRE-SETUP o superior amb dades tècniques vàlides en aquesta cerca. Prova una altra rotació.</td></tr>';
 }
 document.querySelectorAll('.market-filter').forEach(b=>b.addEventListener('click',()=>{currentMarket=b.dataset.market;paintDiscovery()}));
 async function discover(){
@@ -148,7 +148,18 @@ async function discover(){
  }catch(e){status.textContent='Error en la consulta';$('discovernote').textContent='No s’han pogut obtenir candidats actualitzats: '+e.message}
  finally{btn.disabled=false}
 }
-$('discover').addEventListener('click',discover);document.addEventListener('click',e=>{const tr=e.target.closest('[data-discover]');if(tr&&!e.target.closest('button')){const sym=tr.dataset.discover;let x=(window.longaiDiscovery||[]).find(x=>x.symbol===sym);if(x){let old=quotes.findIndex(q=>q.symbol===sym);if(old<0)quotes.push(x);else quotes[old]=x;picked=sym;render()}}});
+$('discover').addEventListener('click',discover);
+document.getElementById('candidateTf').addEventListener('change',async()=>{
+ discoveryTechnical={};paintDiscovery();
+ const status=$('discoverstate'),items=[...lastDiscovery.stocks,...lastDiscovery.crypto];
+ status.textContent='Temporalitat canviada: recalculant els candidats…';
+ if(items.length){
+  const updated=await discoveryTechnicalFetch(items);
+  discoveryTechnical=updated.out;paintDiscovery();
+  status.textContent=lastDiscovery.stocks.filter(discoveryEligible).length+' accions · '+lastDiscovery.crypto.filter(discoveryEligible).length+' criptomonedes amb PRE-SETUP o superior';
+ }else status.textContent='Prem Descobrir per analitzar la nova temporalitat';
+ if(!autoTechnicalBusy&&watch.length)await scanPersonal();
+});document.addEventListener('click',e=>{const tr=e.target.closest('[data-discover]');if(tr&&!e.target.closest('button')){const sym=tr.dataset.discover;let x=(window.longaiDiscovery||[]).find(x=>x.symbol===sym);if(x){let old=quotes.findIndex(q=>q.symbol===sym);if(old<0)quotes.push(x);else quotes[old]=x;picked=sym;render()}}});
 document.getElementById('scan').addEventListener('click',scan);
 document.querySelectorAll('[data-personal-market]').forEach(button=>button.addEventListener('click',()=>{
  const value=button.dataset.personalMarket;
