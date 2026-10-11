@@ -27,6 +27,12 @@ function metrics(b){const c=b.map(x=>x.c),z=b.at(-1);return {price:z?.c??null,em
 function isStockSession(t){if(!validTime(t))return false;const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hourCycle:'h23',weekday:'short'}).formatToParts(new Date(t));const d=Object.fromEntries(parts.map(x=>[x.type,x.value]));let m=Number(d.hour)*60+Number(d.minute);return d.weekday!=='Sat'&&d.weekday!=='Sun'&&m>=570&&m<960}
 function closed(b,ms,isStock=false){const now=Date.now();return b.filter(x=>x.t+ms<=now-60000&&(!isStock||isStockSession(x.t)))}
 function rvolMatched(f,isStock){const last=f.at(-1);if(!last||!Number.isFinite(last.v)||last.v<=0)return null;let hist=f.slice(0,-1).filter(x=>Number.isFinite(x.v)&&x.v>0);if(isStock){const tz=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});let slot=x=>validTime(x.t)?tz.format(new Date(x.t)):null;const currentSlot=slot(last);if(!currentSlot)return null;hist=hist.filter(x=>slot(x)===currentSlot);}else hist=hist.slice(-40);if(hist.length<(isStock?5:12))return null;const avg=hist.reduce((s,x)=>s+x.v,0)/hist.length;return avg>0?last.v/avg:null}
+function aggregateRegularStockHours(a){
+ let out=[];for(let i=0;i+4<=a.length;i+=4){
+  const z=a.slice(i,i+4);out.push({t:z[0].t,o:z[0].o,h:Math.max(...z.map(x=>x.h)),l:Math.min(...z.map(x=>x.l)),c:z.at(-1).c,
+   v:z.every(x=>Number.isFinite(x.v))?z.reduce((sum,x)=>sum+x.v,0):null});
+ }return out;
+}
 function compression4h(h){
  const closes=h.map(x=>x.c);if(closes.length<45)return null;
  const widths=[];for(let i=19;i<closes.length;i++){
@@ -89,7 +95,9 @@ async function one(symbol){
   }
   d=closed(d,86400000);h=closed(h,3600000);f=closed(f,1800000)
  }
- const four=aggregate(h,4); // UTC 4H; validar la sessio de l'exchange contra TradingView.if(!d.length||!f.length)throw Error('no_valid_candles_after_filter');const result=analyze(symbol,isStock?'acció':'cripto',d,four,f);
+ // En accions, les sessions NYSE no omplen finestres UTC 4H completes.
+ // Conservar un context d'hores regulars orientatiu fins a reproduir les barres 4H de TradingView.
+ const four=isStock?aggregateRegularStockHours(h):aggregate(h,4);if(!d.length||!f.length)throw Error('no_valid_candles_after_filter');const result=analyze(symbol,isStock?'acció':'cripto',d,four,f);
  result.source=source;
  return result;
 }
