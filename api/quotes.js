@@ -11,6 +11,49 @@ function nySession(ms){
  if(['Sat','Sun'].includes(p.weekday))return 'TANCAT';
  return minute>=240&&minute<570?'PREMARKET':minute>=570&&minute<960?'REGULAR':minute>=960&&minute<1200?'AFTER-HOURS':'TANCAT';
 }
+async function alpacaExtended(symbol){
+ const key=process.env.APCA_API_KEY_ID,secret=process.env.APCA_API_SECRET_KEY;
+ if(!key||!secret)return null;
+ const now=Date.now(),start=new Date(now-12*3600000).toISOString();
+ const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),6500);
+ try{
+  const url='https://data.alpaca.markets/v2/stocks/'+encodeURIComponent(symbol)+'/bars?timeframe=1Min&start='+encodeURIComponent(start)+'&limit=1000&feed=iex';
+  const res=await fetch(url,{signal:ctl.signal,headers:{'APCA-API-KEY-ID':key,'APCA-API-SECRET-KEY':secret}});
+  if(!res.ok)throw Error('alpaca_http_'+res.status);
+  const body=await res.json(),bars=Array.isArray(body.bars)?body.bars:[];
+  for(let i=bars.length-1;i>=0;i--){const b=bars[i],ms=Date.parse(b.t||''),price=Number(b.c);
+   if(!(price>0)||!Number.isFinite(ms)||Date.now()-ms>30*60000||ms>Date.now()+60000)continue;
+   const session=nySession(ms);if(session!=='TANCAT')return {price,quoteMs:ms,session,source:'Alpaca IEX · 1m (cobertura parcial)'};
+  }
+  return null;
+ }finally{clearTimeout(timer)}
+}
+async function krakenPairs(){
+ const x=await json('https://api.kraken.com/0/public/AssetPairs');
+ if(x.error?.length||!x.result)throw Error('kraken_assetpairs');
+ const pairs=new Map();
+ for(const [id,p] of Object.entries(x.result)){
+  const ws=String(p.wsname||''),alt=String(p.altname||'');
+  const [base,quote]=ws.split('/');
+  if(!base||!['USD','USDC'].includes(quote)||p.status&&p.status!=='online')continue;
+  const normal=base==='XBT'?'BTC':base.toUpperCase();
+  if(!pairs.has(normal)||quote==='USD')pairs.set(normal,{id,altname:alt,quote});
+ }
+ return pairs;
+}
+let krakenPairsCache=null;
+async function cryptoKraken(symbol){
+ const pairs=krakenPairsCache||await krakenPairs();
+ krakenPairsCache=pairs;
+ const match=pairs.get(symbol);
+ if(!match)throw Error('kraken_pair_not_available');
+ const j=await json('https://api.kraken.com/0/public/Ticker?pair='+encodeURIComponent(match.id));
+ if(j.error?.length)throw Error('kraken_ticker_'+j.error.join(','));
+ const ticker=Object.values(j.result||{})[0],price=Number(ticker?.c?.[0]),open=Number(ticker?.o);
+ if(!(price>0))throw Error('kraken_missing_price');
+ // Kraken Ticker no proporciona la marca temporal de l'últim trade; no presentar-la com a temps real verificat.
+ return {symbol,type:'cripto',price,changePct:open>0?100*(price/open-1):null,quoteTime:null,quoteFresh:null,source:'Kraken public '+match.id,pair:match.quote==='USD'?symbol+'-USD':symbol+'-USDC',pairVenue:'Kraken',status:'WATCH',verifiedSignal:false};
+}
 async function stock(symbol){
  const url='https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(symbol);
  const [daily,extended]=await Promise.allSettled([
@@ -23,7 +66,9 @@ async function stock(symbol){
  if(!(regular>0))throw Error('missing_price');
  let price=regular,quoteMs=Number(meta.regularMarketTime||0)*1000,session='TANCAT',provider='Yahoo Finance · tancament/sessió';
  const ext=extended.status==='fulfilled'?extended.value?.chart?.result?.[0]:null;
- if(ext){
+ try{const alternate=await alpacaExtended(symbol);if(alternate){price=alternate.price;quoteMs=alternate.quoteMs;session=alternate.session;provider=alternate.source;}}
+ catch(e){/* Alpaca opcional; Yahoo continua funcionant sense credencials. */}
+ if(ext&&!(provider.startsWith('Alpaca'))){
   const t=ext.timestamp||[],closes=ext.indicators?.quote?.[0]?.close||[];
   for(let i=t.length-1;i>=0;i--){
    const p=Number(closes[i]),ms=Number(t[i])*1000;
@@ -54,8 +99,8 @@ async function cryptoCoinbase(symbol){
 }
 async function cryptos(symbols){
  const data=[],errors=[];
- const rows=await Promise.allSettled(symbols.map(cryptoCoinbase));
+ const rows=await Promise.allSettled(symbols.map(async symbol=>{try{return await cryptoCoinbase(symbol)}catch(coinbaseError){try{return await cryptoKraken(symbol)}catch(krakenError){throw Error('Coinbase: '+coinbaseError.message+' | Kraken: '+krakenError.message)}}}));
  rows.forEach((r,i)=>r.status==='fulfilled'?data.push(r.value):errors.push({symbol:symbols[i],reason:String(r.reason?.message||r.reason)}));
  return {data,errors};
 }
-export default async function handler(req,res){res.setHeader('Cache-Control','public, s-maxage=45, stale-while-revalidate=90');if(req.method!=='GET')return res.status(405).json({error:'method_not_allowed'});let selected=String(req.query?.symbols||'').split(',').map(s=>s.trim().toUpperCase()).filter(s=>allowed.has(s)||validStock(s));if(!selected.length)selected=[...STOCKS,...Object.keys(CRYPTOS)];selected=[...new Set(selected)].slice(0,20);const requestedCrypto=new Set(String(req.query?.crypto||'').split(',').map(x=>x.toUpperCase()));const coins=selected.filter(s=>CRYPTOS[s]||requestedCrypto.has(s)),eq=selected.filter(s=>!coins.includes(s));const out=await Promise.allSettled([Promise.allSettled(eq.map(stock)),coins.length?cryptos(coins):Promise.resolve({data:[],errors:[]})]);let quotes=[],errors=[];if(out[0].status==='fulfilled')out[0].value.forEach((x,i)=>x.status==='fulfilled'?quotes.push(x.value):errors.push({symbol:eq[i],reason:String(x.reason?.message||x.reason)}));else errors.push({source:'stocks',reason:String(out[0].reason)});if(out[1].status==='fulfilled')(quotes.push(...out[1].value.data),errors.push(...out[1].value.errors));else errors.push({source:'crypto',reason:String(out[1].reason?.message||out[1].reason)});return res.status(quotes.length?200:503).json({quotes,errors,updatedAt:new Date().toISOString(),mode:'live_quotes_only',disclaimer:'Cotitzacions cripto Coinbase USD/USDC. Senyals Pine no validats.'})}
+export default async function handler(req,res){res.setHeader('Cache-Control','public, s-maxage=45, stale-while-revalidate=90');if(req.method!=='GET')return res.status(405).json({error:'method_not_allowed'});let selected=String(req.query?.symbols||'').split(',').map(s=>s.trim().toUpperCase()).filter(s=>allowed.has(s)||validStock(s));if(!selected.length)selected=[...STOCKS,...Object.keys(CRYPTOS)];selected=[...new Set(selected)].slice(0,20);const requestedCrypto=new Set(String(req.query?.crypto||'').split(',').map(x=>x.toUpperCase()));const coins=selected.filter(s=>CRYPTOS[s]||requestedCrypto.has(s)),eq=selected.filter(s=>!coins.includes(s));const out=await Promise.allSettled([Promise.allSettled(eq.map(stock)),coins.length?cryptos(coins):Promise.resolve({data:[],errors:[]})]);let quotes=[],errors=[];if(out[0].status==='fulfilled')out[0].value.forEach((x,i)=>x.status==='fulfilled'?quotes.push(x.value):errors.push({symbol:eq[i],reason:String(x.reason?.message||x.reason)}));else errors.push({source:'stocks',reason:String(out[0].reason)});if(out[1].status==='fulfilled')(quotes.push(...out[1].value.data),errors.push(...out[1].value.errors));else errors.push({source:'crypto',reason:String(out[1].reason?.message||out[1].reason)});return res.status(quotes.length?200:503).json({quotes,errors,updatedAt:new Date().toISOString(),mode:'live_quotes_only',disclaimer:'Cripto: Coinbase amb Kraken com a alternativa quan Coinbase falla; Kraken no retorna timestamp del ticker. Accions: Yahoo i Alpaca IEX opcional amb credencials; senyals Pine no validats.'})}
