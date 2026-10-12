@@ -242,6 +242,12 @@ render=function(){
   document.querySelectorAll('#rows tr[data-s]').forEach(tr=>{
     const symbol=tr.getAttribute('data-s'),analysis=scans[symbol],q=quoteCache[symbol];
     const cells=tr.querySelectorAll('td');if(cells.length<5)return;
+    const priceCell=cells[1];
+    if(q?.type==='acció'&&q.marketState){
+      const session={'PREMARKET':'PREMARKET','AFTER-HOURS':'AFTER-HOURS','REGULAR':'REGULAR','TANCAT':'TANCAT'}[q.marketState]||'NO CONFIRMAT';
+      priceCell.innerHTML='<b>'+number(q.price)+' $</b><div class="small dim">'+session+'</div>';
+      priceCell.title='Font: '+esc(q.source||'')+' · Última cotització: '+esc(q.quoteTime||'desconeguda');
+    }
     const statusCell=cells[3]; const shownStatus=(analysis?.noChase||analysis?.status==='NO PERSEGUIR')?'NO PERSEGUIR':analysis?.dataQuality==='ok'?(analysis.status||'SENSE DADES'):analysis?(analysis.dataQuality==='stale'?'DADES ANTIGUES':'DADES INSUFICIENTS'):(scanErrors[symbol]?'ERROR DE DADES':'PENDENT ANÀLISI'); statusCell.innerHTML='<span class="chip" title="'+esc(analysis?.reason||scanErrors[symbol]||'Estat orientatiu del motor web; contrastar amb Pine')+'">'+esc(shownStatus)+'</span>';
     const expCell=document.createElement('td');
     expCell.innerHTML=Number.isFinite(analysis?.explosiveWatch)?'<span class="exp-pill">'+analysis.explosiveWatch+'/5</span>':'<span class="dim">—</span>';
