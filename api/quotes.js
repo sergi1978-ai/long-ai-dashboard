@@ -4,7 +4,40 @@ const allowed=new Set([...STOCKS,...Object.keys(CRYPTOS)]);
 const validStock=s=>/^[A-Z][A-Z0-9.\-]{0,9}$/.test(s);
 const wait=(p,ms=9500)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),ms))]);
 async function json(url){let r=await wait(fetch(url,{headers:{'User-Agent':'LongAIDashboard/1.1','Accept':'application/json'}}));if(!r.ok)throw new Error('provider_http_'+r.status);return r.json()}
-async function stock(symbol){let d=await json('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(symbol)+'?interval=1d&range=5d');let x=d?.chart?.result?.[0];if(!x)throw Error('missing_stock');let meta=x.meta||{},price=Number(meta.regularMarketPrice),prev=Number(meta.chartPreviousClose||meta.previousClose);if(!(price>0))throw Error('missing_price');return {symbol,type:'acció',price,changePct:prev>0?100*(price/prev-1):null,marketState:meta.marketState||null,quoteTime:meta.regularMarketTime?new Date(meta.regularMarketTime*1000).toISOString():null,source:'Yahoo Finance chart (consulta pública)',status:'WATCH',verifiedSignal:false}}
+function nySession(ms){
+ const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(ms));
+ const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));
+ const minute=Number(p.hour)*60+Number(p.minute);
+ if(['Sat','Sun'].includes(p.weekday))return 'TANCAT';
+ return minute>=240&&minute<570?'PREMARKET':minute>=570&&minute<960?'REGULAR':minute>=960&&minute<1200?'AFTER-HOURS':'TANCAT';
+}
+async function stock(symbol){
+ const url='https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(symbol);
+ const [daily,extended]=await Promise.allSettled([
+  json(url+'?interval=1d&range=5d'),
+  json(url+'?interval=5m&range=5d&includePrePost=true')
+ ]);
+ if(daily.status!=='fulfilled')throw Error('missing_stock_daily');
+ const d=daily.value?.chart?.result?.[0];if(!d)throw Error('missing_stock');
+ const meta=d.meta||{},regular=Number(meta.regularMarketPrice),prev=Number(meta.chartPreviousClose||meta.previousClose);
+ if(!(regular>0))throw Error('missing_price');
+ let price=regular,quoteMs=Number(meta.regularMarketTime||0)*1000,session='TANCAT',provider='Yahoo Finance · tancament/sessió';
+ const ext=extended.status==='fulfilled'?extended.value?.chart?.result?.[0]:null;
+ if(ext){
+  const t=ext.timestamp||[],closes=ext.indicators?.quote?.[0]?.close||[];
+  for(let i=t.length-1;i>=0;i--){
+   const p=Number(closes[i]),ms=Number(t[i])*1000;
+   if(!(p>0)||!Number.isFinite(ms)||ms>Date.now()+60000||Date.now()-ms>24*3600000)continue;
+   const zone=nySession(ms);
+   if(zone!=='TANCAT'){
+    price=p;quoteMs=ms;session=zone;provider='Yahoo Finance · barres 5m incl. pre/post';break;
+   }
+  }
+ }
+ if(session==='TANCAT'&&quoteMs>0&&Date.now()-quoteMs<24*3600000)session=nySession(quoteMs);
+ const fresh=quoteMs>0&&Date.now()-quoteMs<7*86400000;
+ return {symbol,type:'acció',price,regularPrice:regular,changePct:prev>0?100*(price/prev-1):null,marketState:session,quoteTime:quoteMs>0?new Date(quoteMs).toISOString():null,quoteFresh:fresh,source:provider,status:'WATCH',verifiedSignal:false};
+}
 async function cryptoCoinbase(symbol){
  let failure='No pair';
  for(const quote of ['USD','USDC']){
