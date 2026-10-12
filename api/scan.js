@@ -147,8 +147,10 @@ function analyze(symbol,type,d,h,f){const stock=type==='acció';const C=f.at(-1)
  const bearishVolume=rvol!==null&&rvol>=1.2&&C.c<C.o&&C.c<f.at(-2)?.c;
  const fallingTwo=f.length>=3&&C.c<f.at(-2).c&&f.at(-2).c<f.at(-3).c;
  const gapTriggerPct=trigger>0?100*(trigger-C.c)/trigger:null;
- const setupWeak=trigger>0&&gapTriggerPct!==null&&gapTriggerPct>=2.5&&F.ema20>0&&C.c<F.ema20&&(bearishVolume||fallingTwo);
- const planInvalidated=trigger>0&&stop!==null&&C.c<=stop;
+ const severeGap=gapTriggerPct!==null&&gapTriggerPct>=3.75;
+ const setupWeak=trigger>0&&gapTriggerPct!==null&&gapTriggerPct>=2.5&&(severeGap||(F.ema20>0&&C.c<F.ema20&&(bearishVolume||fallingTwo)));
+ // Sense historial persistent al servidor, l'stop recalculat NO demostra invalidació d'un pla antic.
+ const planInvalidated=false;
  const volumeDirection=bearishVolume?'BAIXISTA FORT':C.c<C.o?'BAIXISTA':C.c>C.o?'ALCISTA':'NEUTRE';
  let status='WATCH',reason='Sense confirmació de tendència i patró';
  if(planInvalidated){
@@ -165,7 +167,7 @@ function analyze(symbol,type,d,h,f){const stock=type==='acció';const C=f.at(-1)
    status='PRE-READY';reason='Ruptura/retest, volum i R/R favorables; falta confirmació al Pine';
   }
  }
- return {...base,status,reason,noChase,volumeDirection,bearishVolume,gapTriggerPct,setupWeak,planInvalidated,planLifetimeHours:6,planExpiryChecked:false,extensionATR,extensionDecisionATR,extensionDecisionPct,tooExtended4H,tooExtendedDecision,stopRiskPct,pattern,volumeRatio:rvol,trigger,stop,tp1,tp2,rr,trendD,trend4H,explosiveWatch,explosiveDirection,explosiveEligible,compressionRatio:bbRatio,atrCompressionRatio:atrRatio,explosiveChecks,filters:{higher,momentum,breakout,retest,volume:volOk,liquidity:liquidOK,extension:extensionOK,rr:rr!==null&&rr>=2},dataQuality:rvol===null?'volume_unavailable':'ok',warning:'Motor web orientatiu v6.6.17: no reprodueix encara caducitat persistent del pla Pine (6h); READY formal desactivat.'}
+ return {...base,status,reason,noChase,volumeDirection,bearishVolume,gapTriggerPct,severeGap,setupWeak,planInvalidated,planLifetimeHours:6,planExpiryChecked:false,extensionATR,extensionDecisionATR,extensionDecisionPct,tooExtended4H,tooExtendedDecision,stopRiskPct,pattern,volumeRatio:rvol,trigger,stop,tp1,tp2,rr,trendD,trend4H,explosiveWatch,explosiveDirection,explosiveEligible,compressionRatio:bbRatio,atrCompressionRatio:atrRatio,explosiveChecks,filters:{higher,momentum,breakout,retest,volume:volOk,liquidity:liquidOK,extension:extensionOK,rr:rr!==null&&rr>=2},dataQuality:rvol===null?'volume_unavailable':'ok',warning:'Motor web orientatiu v6.6.17: no reprodueix encara caducitat persistent del pla Pine (6h); READY formal desactivat.'}
 }
 async function one(symbol,forceCrypto=false,scanTf='30m'){
  const isStock=!forceCrypto&&STOCKS.has(symbol),isCrypto=forceCrypto||(!isStock&&/^[A-Z0-9]{2,16}$/.test(symbol));
