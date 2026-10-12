@@ -301,13 +301,57 @@ async function refreshPersonalQuotes(){
  $('notice').innerHTML='<b>Radar personal consultat.</b> '+data.length+'/'+symbols.length+' preus retornats; '+fail.length+' incidències. Les dades poden tenir retard. '+(fail.length?esc(fail.slice(0,2).map(e=>e.symbol||e.symbols||e.reason).join(', ')):'');
  render();return {success:data.length,errors:fail};
 }
+// Seguiment local dels plans: conserva entrada/stop entre escanejos, per símbol i temporalitat.
+const PLAN_STORAGE='longai-plans-v6618';
+let trackedPlans={};
+try{const saved=JSON.parse(localStorage.getItem(PLAN_STORAGE)||'{}');if(saved&&typeof saved==='object'&&!Array.isArray(saved))trackedPlans=saved}catch(_){}
+function planKey(a){return (a.type==='cripto'?'C:':'S:')+a.symbol+':'+($('candidateTf')?.value||'30m')}
+function saveTrackedPlans(){try{localStorage.setItem(PLAN_STORAGE,JSON.stringify(trackedPlans))}catch(_){}}
+function trackWebPlan(a){
+ if(!a||a.dataQuality!=='ok'||!a.symbol)return a;
+ const key=planKey(a),bar=Date.parse(a.quoteTime||'');
+ if(!Number.isFinite(bar))return a;
+ let p=trackedPlans[key];
+ const candidate=['PRE-SETUP','PRE-READY'].includes(a.status)&&Number.isFinite(a.trigger)&&a.trigger>0&&Number.isFinite(a.stop)&&a.stop>0&&a.trigger>a.stop;
+ const candleMs=($('candidateTf')?.value==='1h'?3600000:1800000);
+ if(p&&p.event){
+  // No crear un pla nou sobre la mateixa espelma que ha invalidat/caducat l'anterior.
+  if(candidate&&bar>p.eventBar+candleMs){delete trackedPlans[key];p=null}
+  else return {...a,status:p.event,reason:p.eventReason,planTracked:true,planExpiryChecked:true,planEntry:p.entry,planStop:p.stop};
+ }
+ if(!p&&candidate){
+  p={entry:a.trigger,stop:a.stop,startBar:bar,lastBar:bar};
+  trackedPlans[key]=p;
+ }
+ if(!p)return a;
+ if(bar<p.startBar)return a; // Evitar dades reculades respecte al pla desat.
+ p.lastBar=Math.max(p.lastBar||0,bar);
+ const elapsed=bar-p.startBar,price=Number(a.price);
+ const broken=Number.isFinite(price)&&price<=p.stop;
+ const expired=elapsed>=6*3600000;
+ if(broken||expired){
+  p.event=broken?'PLA INVALIDAT':'PLA CADUCAT';
+  p.eventReason=broken?'Tancament sota l’stop original del pla conservat ('+number(p.stop)+' $)':'Han transcorregut 6 hores d’espelmes sense activació del pla conservat';
+  p.eventBar=bar;saveTrackedPlans();
+  return {...a,status:p.event,reason:p.eventReason,planTracked:true,planExpiryChecked:true,planEntry:p.entry,planStop:p.stop};
+ }
+ const gap=Number.isFinite(price)?100*(p.entry-price)/p.entry:null;
+ const severe=gap!==null&&gap>=3.75;
+ const weak=gap!==null&&gap>=2.5&&(severe||a.bearishVolume||a.volumeDirection==='BAIXISTA');
+ if(weak&&!a.noChase){
+  saveTrackedPlans();
+  return {...a,status:'PRE-SETUP DEBILITAT',reason:'Pla conservat: entrada '+number(p.entry)+' $; distància '+formatTech(gap)+'% i pressió/debilitat tècnica. Esperar nova confirmació.',gapTriggerPct:gap,setupWeak:true,planTracked:true,planExpiryChecked:true,planEntry:p.entry,planStop:p.stop};
+ }
+ saveTrackedPlans();
+ return {...a,planTracked:true,planExpiryChecked:true,planEntry:p.entry,planStop:p.stop};
+}
 async function scanPersonal(){
  if(autoTechnicalBusy)return;autoTechnicalBusy=true;
  const btn=$('scan'),status=$('scanstate');btn.disabled=true;btn.textContent='⌁ Analitzant radar…';
  const symbols=[...new Set(watch.map(x=>x.symbol))];scans={};scanErrors={};
  for(let i=0;i<symbols.length;i+=5){const batch=symbols.slice(i,i+5);
   try{let r=await fetch('/api/scan?symbols='+encodeURIComponent(batch.join(','))+'&crypto='+encodeURIComponent(batch.filter(z=>watch.find(w=>w.symbol===z)?.type==='cripto'||lastDiscovery.crypto.some(y=>y.symbol===z)).join(','))+'&tf='+encodeURIComponent(document.getElementById('candidateTf')?.value||'30m'),{cache:'no-store'}),d=await r.json();if(!r.ok||!Array.isArray(d.analyses))throw Error('API HTTP '+r.status);
-   for(const a of d.analyses){if(isWatched(a.symbol))scans[a.symbol]=a;}
+   for(const a of d.analyses){if(isWatched(a.symbol))scans[a.symbol]=trackWebPlan(a);}
    for(const e of d.errors||[]){if(isWatched(e.symbol))scanErrors[e.symbol]=e.message;}
   }catch(e){for(const sym of batch){if(isWatched(sym))scanErrors[sym]=String(e.message||e)}}
   status.textContent=Object.keys(scans).length+'/'+symbols.length+' amb anàlisi · '+Object.keys(scanErrors).length+' sense cobertura';paintTech();render();
