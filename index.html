@@ -115,7 +115,7 @@ async function discoveryTechnicalFetch(items){
 }
 function discoveryEligible(x){
  const a=discoveryTechnical[x.symbol];
- return Boolean(a&&a.dataQuality==='ok'&&!a.noChase&&['PRE-SETUP','PRE-READY','READY','READY A','READY A+'].includes(a.status));
+ return Boolean(a&&a.dataQuality==='ok'&&!a.noChase&&!a.bearishVolume&&!a.setupWeak&&!a.planInvalidated&&['PRE-SETUP','PRE-READY'].includes(a.status));
 }
 function paintDiscovery(){
  const items=[...(currentMarket==='acció'?lastDiscovery.stocks:lastDiscovery.crypto)].filter(discoveryEligible).sort((a,b)=>{
@@ -193,7 +193,7 @@ function watchSortValue(tr,key){
  const sym=tr.dataset.s||'',q=quoteCache[sym]||{},a=scans[sym]||{};
  if(key==='symbol')return sym;
  if(key==='status'){
-  const state=String(['PLA INVALIDAT','PRE-SETUP DEBILITAT'].includes(a.status)?a.status:(a.noChase||a.status==='NO PERSEGUIR')?'NO PERSEGUIR':a.dataQuality==='ok'?(a.status||'SENSE DADES'):'SENSE DADES').toUpperCase();
+  const state=String(['PLA INVALIDAT','PLA CADUCAT','PRE-SETUP DEBILITAT'].includes(a.status)?a.status:(a.noChase||a.status==='NO PERSEGUIR')?'NO PERSEGUIR':a.dataQuality==='ok'?(a.status||'SENSE DADES'):'SENSE DADES').toUpperCase();
   if(state==='READY'||state.startsWith('READY '))return state.includes('A+')?0:1;
   const priority={'PRE-READY':2,'PRE-SETUP':3,'WATCH':4,'PRE-SETUP DEBILITAT':5,'NO PERSEGUIR':6,'PLA CADUCAT':7,'PLA INVALIDAT':8,'SENSE DADES':9};
   return priority[state]??7;
@@ -248,7 +248,7 @@ render=function(){
       priceCell.innerHTML='<b>'+number(q.price)+' $</b><div class="small dim">'+session+'</div>';
       priceCell.title='Font: '+esc(q.source||'')+' · Última cotització: '+esc(q.quoteTime||'desconeguda');
     }
-    const statusCell=cells[3]; const shownStatus=['PLA INVALIDAT','PRE-SETUP DEBILITAT'].includes(analysis?.status)?analysis.status:(analysis?.noChase||analysis?.status==='NO PERSEGUIR')?'NO PERSEGUIR':analysis?.dataQuality==='ok'?(analysis.status||'SENSE DADES'):analysis?(analysis.dataQuality==='stale'?'DADES ANTIGUES':'DADES INSUFICIENTS'):(scanErrors[symbol]?'ERROR DE DADES':'PENDENT ANÀLISI'); statusCell.innerHTML='<span class="chip" title="'+esc(analysis?.reason||scanErrors[symbol]||'Estat orientatiu del motor web; contrastar amb Pine')+'">'+esc(shownStatus)+'</span>';
+    const statusCell=cells[3]; const shownStatus=['PLA INVALIDAT','PLA CADUCAT','PRE-SETUP DEBILITAT'].includes(analysis?.status)?analysis.status:(analysis?.noChase||analysis?.status==='NO PERSEGUIR')?'NO PERSEGUIR':analysis?.dataQuality==='ok'?(analysis.status||'SENSE DADES'):analysis?(analysis.dataQuality==='stale'?'DADES ANTIGUES':'DADES INSUFICIENTS'):(scanErrors[symbol]?'ERROR DE DADES':'PENDENT ANÀLISI'); statusCell.innerHTML='<span class="chip" title="'+esc(analysis?.reason||scanErrors[symbol]||'Estat orientatiu del motor web; contrastar amb Pine')+'">'+esc(shownStatus)+'</span>';
     const expCell=document.createElement('td');
     expCell.innerHTML=Number.isFinite(analysis?.explosiveWatch)?'<span class="exp-pill">'+analysis.explosiveWatch+'/5</span>':'<span class="dim">—</span>';
     const scoreCell=document.createElement('td');
