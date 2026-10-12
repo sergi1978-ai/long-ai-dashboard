@@ -29,13 +29,14 @@ async function stock(symbol){
    const p=Number(closes[i]),ms=Number(t[i])*1000;
    if(!(p>0)||!Number.isFinite(ms)||ms>Date.now()+60000||Date.now()-ms>24*3600000)continue;
    const zone=nySession(ms);
-   if(zone!=='TANCAT'){
+   if(zone!=='TANCAT'&&Date.now()-ms<60*60000){
     price=p;quoteMs=ms;session=zone;provider='Yahoo Finance · barres 5m incl. pre/post';break;
    }
   }
  }
- if(session==='TANCAT'&&quoteMs>0&&Date.now()-quoteMs<24*3600000)session=nySession(quoteMs);
+ // Sense una barra ampliada recent, mostrar l'últim tancament com a tal, no com a premarket en directe.
  const fresh=quoteMs>0&&Date.now()-quoteMs<7*86400000;
+ if(!fresh)throw Error('stale_stock_quote');
  return {symbol,type:'acció',price,regularPrice:regular,changePct:prev>0?100*(price/prev-1):null,marketState:session,quoteTime:quoteMs>0?new Date(quoteMs).toISOString():null,quoteFresh:fresh,source:provider,status:'WATCH',verifiedSignal:false};
 }
 async function cryptoCoinbase(symbol){
