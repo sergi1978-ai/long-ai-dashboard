@@ -195,7 +195,7 @@ function watchSortValue(tr,key){
  if(key==='status'){
   const state=String((a.noChase||a.status==='NO PERSEGUIR')?'NO PERSEGUIR':a.dataQuality==='ok'?(a.status||'SENSE DADES'):'SENSE DADES').toUpperCase();
   if(state==='READY'||state.startsWith('READY '))return state.includes('A+')?0:1;
-  const priority={'PRE-READY':2,'PRE-SETUP':3,'WATCH':4,'NO PERSEGUIR':5,'SENSE DADES':6};
+  const priority={'PRE-READY':2,'PRE-SETUP':3,'WATCH':4,'PRE-SETUP DEBILITAT':5,'NO PERSEGUIR':6,'PLA CADUCAT':7,'PLA INVALIDAT':8,'SENSE DADES':9};
   return priority[state]??7;
  }
  if(key==='price')return Number.isFinite(q.price)?q.price:null;
@@ -248,7 +248,7 @@ render=function(){
       priceCell.innerHTML='<b>'+number(q.price)+' $</b><div class="small dim">'+session+'</div>';
       priceCell.title='Font: '+esc(q.source||'')+' · Última cotització: '+esc(q.quoteTime||'desconeguda');
     }
-    const statusCell=cells[3]; const shownStatus=(analysis?.noChase||analysis?.status==='NO PERSEGUIR')?'NO PERSEGUIR':analysis?.dataQuality==='ok'?(analysis.status||'SENSE DADES'):analysis?(analysis.dataQuality==='stale'?'DADES ANTIGUES':'DADES INSUFICIENTS'):(scanErrors[symbol]?'ERROR DE DADES':'PENDENT ANÀLISI'); statusCell.innerHTML='<span class="chip" title="'+esc(analysis?.reason||scanErrors[symbol]||'Estat orientatiu del motor web; contrastar amb Pine')+'">'+esc(shownStatus)+'</span>';
+    const statusCell=cells[3]; const shownStatus=['PLA INVALIDAT','PRE-SETUP DEBILITAT'].includes(analysis?.status)?analysis.status:(analysis?.noChase||analysis?.status==='NO PERSEGUIR')?'NO PERSEGUIR':analysis?.dataQuality==='ok'?(analysis.status||'SENSE DADES'):analysis?(analysis.dataQuality==='stale'?'DADES ANTIGUES':'DADES INSUFICIENTS'):(scanErrors[symbol]?'ERROR DE DADES':'PENDENT ANÀLISI'); statusCell.innerHTML='<span class="chip" title="'+esc(analysis?.reason||scanErrors[symbol]||'Estat orientatiu del motor web; contrastar amb Pine')+'">'+esc(shownStatus)+'</span>';
     const expCell=document.createElement('td');
     expCell.innerHTML=Number.isFinite(analysis?.explosiveWatch)?'<span class="exp-pill">'+analysis.explosiveWatch+'/5</span>':'<span class="dim">—</span>';
     const scoreCell=document.createElement('td');
@@ -258,7 +258,7 @@ render=function(){
     statusCell.after(scoreCell);
     scoreCell.after(expCell);
     const volCell=document.createElement('td');
-    volCell.textContent=analysis?.volumeRatio==null?'—':formatTech(analysis.volumeRatio)+'×';
+    volCell.textContent=analysis?.volumeRatio==null?'—':formatTech(analysis.volumeRatio)+'×'+(analysis.bearishVolume?' ↓':'');volCell.title='Direcció del volum: '+(analysis?.volumeDirection||'N/D')+' · no confondre RVOL baixista amb confirmació alcista';
     const rrCell=document.createElement('td');rrCell.textContent=analysis?.rr==null?'—':formatTech(analysis.rr);
     expCell.after(volCell,rrCell);
     const sourceCell=cells[4];
