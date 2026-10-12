@@ -272,7 +272,7 @@ render=function(){
     tr.appendChild(analysisCell);
     sourceCell.remove();
     const tvCell=document.createElement('td');
-    const market=q?.pair?((q.pairVenue==='Kraken'?'KRAKEN:':'COINBASE:')+q.pair.replace('-','')):(q?.type==='cripto'||watch.find(w=>w.symbol===symbol)?.type==='cripto'?'COINBASE:'+symbol+'USD':'NASDAQ:'+symbol);
+    const market=q?.pair?(((analysis?.venue==='Kraken'||(!analysis?.venue&&q.pairVenue==='Kraken'))?'KRAKEN:':'COINBASE:')+(analysis?.pair||q.pair).replace('-','')):(q?.type==='cripto'||watch.find(w=>w.symbol===symbol)?.type==='cripto'?'COINBASE:'+symbol+'USD':'NASDAQ:'+symbol);
     tvCell.innerHTML='<a class="tv-link" href="https://www.tradingview.com/chart/?symbol='+encodeURIComponent(market)+'" target="_blank" rel="noopener noreferrer" title="Verificar amb el Pine a TradingView">TradingView ↗</a>';
     tr.appendChild(tvCell);
     const removeCell=document.createElement('td');removeCell.innerHTML='<button class="watch-remove" type="button" data-remove="'+esc(symbol)+'">✕ Eliminar</button>';tr.appendChild(removeCell);
